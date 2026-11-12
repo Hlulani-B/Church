@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Vercel
+.vercel
+*.tgz
+
+# Qoder local session settings
+.qoder/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

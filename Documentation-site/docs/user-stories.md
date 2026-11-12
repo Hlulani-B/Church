@@ -19,6 +19,12 @@ value, which would renumber the leader and admin stories from 1. -->
 
 ## Leader stories
 
+A leader is a member first. Stories 1 to 6 apply to leaders unchanged: they log
+in as themselves, mark their own Attending or Not Attending with a reason, may
+correct it before the meeting, log their own testimonies, and see their own
+history. The stories below are in addition to that, not instead of it, and they
+are the only extra permissions the leader role grants.
+
 <ol start="7">
 <li>As a leader, I want to see who is attending, not attending and not yet responded this week so that I can plan the meeting.</li>
 <li>As a leader, I want to see each member's monthly attendance so that I can spot patterns.</li>

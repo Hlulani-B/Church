@@ -48,6 +48,20 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au .card h4{font-size:20px;margin:0 0 6px;font-weight:500}
 .au .card p{margin:0;color:var(--muted);font-size:14px}
 
+/* create community popup */
+.au .veil{position:fixed;inset:0;background:rgba(20,20,20,.5);display:flex;align-items:center;justify-content:center;padding:24px;z-index:20}
+.au .pop{background:#fff;border-radius:2px;width:100%;max-width:420px;padding:28px;box-shadow:0 20px 44px rgba(0,0,0,.28)}
+.au .pop h2{font-size:26px;margin:0 0 8px}
+.au .pop .lead{color:var(--muted);font-size:15px;margin:0 0 20px}
+.au .pop label{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 6px}
+.au .pop input{width:100%;border:1px solid var(--line);border-radius:2px;padding:11px 12px;font-size:16px;font-family:inherit;color:var(--text)}
+.au .pop input:focus{outline:2px solid #111;outline-offset:1px}
+.au .pop .fail{color:#a11111;font-size:14px;margin:14px 0 0}
+.au .pop .row{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}
+.au .pop .ghost{background:#fff;color:#111;border:1px solid var(--line);border-radius:2px;padding:11px 20px;font-size:15px;font-family:inherit;cursor:pointer}
+.au .pop .go{background:#111;color:#fff;border:0;border-radius:2px;padding:12px 22px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
+.au .pop .go:disabled{opacity:.55;cursor:default}
+
 @media (max-width:860px){
   .au .bar{padding:14px 20px}
   .au .main{padding:40px 24px 72px}
@@ -61,6 +75,38 @@ export default function CommunityPage() {
   const [member, setMember] = useState(null);
   const [mine, setMine] = useState([]);
   const [note, setNote] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [communityName, setCommunityName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [popupError, setPopupError] = useState("");
+
+  function closePopup() {
+    setCreating(false);
+    setCommunityName("");
+    setPopupError("");
+  }
+
+  async function submitCommunity(event) {
+    event.preventDefault();
+    const name = communityName.trim();
+    if (!name) {
+      setPopupError("Give the community a name first.");
+      return;
+    }
+    setSaving(true);
+    setPopupError("");
+    try {
+      const created = await communities.createCommunity(name);
+      closePopup();
+      setNote(`“${created.name}” is open, and you are its admin.`);
+    } catch (error) {
+      setPopupError(error.message);
+      return;
+    } finally {
+      setSaving(false);
+    }
+    communities.getCommunities().then(setMine).catch((error) => setNote(error.message));
+  }
 
   useEffect(() => {
     return accounts.onChange((user) => {
@@ -87,8 +133,14 @@ export default function CommunityPage() {
     });
   }, [navigate]);
 
-  // Placeholder. Fill this in later (for example, go to a create community page).
-  function createCommunity() {}
+  useEffect(() => {
+    if (!creating) return undefined;
+    function onKey(event) {
+      if (event.key === "Escape") closePopup();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [creating]);
 
   if (!signedIn) {
     return (
@@ -118,7 +170,7 @@ export default function CommunityPage() {
         <div className="inner">
           <h2 className="serif">Bring your fellowship <em>together.</em></h2>
           <p>Create a community to track attendance, understand why people miss, and keep every testimony.</p>
-          <button className="btn" type="button" onClick={createCommunity}>Create Community</button>
+          <button className="btn" type="button" onClick={() => setCreating(true)}>Create Community</button>
         </div>
       </section>
 
@@ -145,6 +197,44 @@ export default function CommunityPage() {
           <p className="sub">You are not in a community yet.</p>
         )}
       </main>
+
+      {creating && (
+        <div
+          className="veil"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Create community"
+          onClick={closePopup}
+        >
+          <div className="pop" onClick={(event) => event.stopPropagation()}>
+            <h2 className="serif">Create Community</h2>
+            <p className="lead">
+              A community keeps its own fellowship list, attendance and testimonies. You
+              will be its admin.
+            </p>
+            <form onSubmit={submitCommunity}>
+              <label htmlFor="community-name">Community name</label>
+              <input
+                id="community-name"
+                value={communityName}
+                onChange={(event) => setCommunityName(event.target.value)}
+                placeholder="e.g. Kopano Youth Fellowship"
+                maxLength={80}
+                autoFocus
+              />
+              {popupError && <p className="fail">{popupError}</p>}
+              <div className="row">
+                <button className="ghost" type="button" onClick={closePopup}>
+                  Cancel
+                </button>
+                <button className="go" type="submit" disabled={saving}>
+                  {saving ? "Creating…" : "Create"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

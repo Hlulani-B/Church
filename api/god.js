@@ -146,8 +146,13 @@ async function verifiedEmail(token) {
 }
 
 // What a signed-in browser may do without the server key: only its own user row,
-// and only the communities its own email belongs to.
-const SELF_ACTIONS = { user: ['find', 'create', 'update'], community: ['memberOf'] }
+// and only the communities its own email belongs to. Opening a community is allowed
+// because the guard below pairs it with joining that new community as its first member.
+const SELF_ACTIONS = {
+  user: ['find', 'create', 'update'],
+  community: ['memberOf', 'create'],
+  member: ['create'],
+}
 // email is the primary key of users, so a browser must never move a row onto
 // someone else's address; everything except these two columns is dropped.
 const SELF_FIELDS = { user: ['name', 'surname'] }
@@ -169,6 +174,7 @@ export default async function handler(req, res) {
   }
 
   let { action, params = {} } = req.body || {}
+  const god = new God()
   if (!matchesServerKey(token)) {
     const { email, reason } = await verifiedEmail(token)
     if (!email) {
@@ -196,10 +202,37 @@ export default async function handler(req, res) {
       }
       params = { ...params, changes }
     }
+    if (action === 'community' && params.function === 'create') {
+      const name = String(params.name || '').trim()
+      if (!name) {
+        return res.status(400).json({ error: 'params.name is required to open a community' })
+      }
+      params = { ...params, name }
+    }
+    /*
+      Making yourself a member with role admin is only safe while the community has no
+      members at all, which is the moment a creator joins the group they just opened.
+      Adding to a community that already has people would hand over their attendance and
+      testimonies, so that stays behind GOD_SERVER_KEY.
+    */
+    if (action === 'member' && params.function === 'create') {
+      if (!params.community_id) {
+        return res.status(400).json({ error: 'params.community_id is required to join a community' })
+      }
+      const links = await new CommunityMember(god.url, god.key).all({
+        community_id: params.community_id,
+      })
+      if (links.length) {
+        return res
+          .status(403)
+          .json({ error: 'that community already has members, so only the server key can add one' })
+      }
+      params = { ...params, role: 'admin' }
+    }
   }
 
   try {
-    const data = await new God().call(action, params)
+    const data = await god.call(action, params)
     return res.status(200).json({ data })
   } catch (error) {
     const status = error.status || 500

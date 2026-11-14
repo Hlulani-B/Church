@@ -31,7 +31,7 @@ message with a link to create an account instead of redirecting there.
 | `/signup` | `src/pages/create_account.jsx` | Creates the account, then the `users` row through `/api/god`, then on to `/community` |
 | `/forgot-password` | `src/pages/forgot_password.jsx` | `sendPasswordResetEmail`, with a resend button |
 | `/terms` | `src/pages/TCs.jsx` | The policy text, linked from the agree checkbox on `/signup` |
-| `/community` | `src/pages/community.jsx` | The signed-in home page: reads the visitor's own `users` row and greets them |
+| `/community` | `src/pages/community.jsx` | The signed-in home page: greets the visitor from their own `users` row, lists their communities and opens new ones from a popup |
 | `/profile` | `src/pages/profile.jsx` | Changes **name and surname only**, through `/api/god` `user` `update` |
 
 `/community` is the page every successful sign-in lands on, from both `/login` and
@@ -40,6 +40,12 @@ their `community_members` links point at. It is thin for now: the fellowship lis
 attendance and logging testimonies are not built. It does prove the sign-in round trip
 works, and it warns when the address has no `users` row. `/terms` is no longer a step in
 the sign-up path; the terms remain reachable from the agree checkbox.
+
+**Create Community** is a popup on this page, not a route. `CommunityFetch.createCommunity(name)`
+in `src/page_functions/community.js` calls the server twice — `community` `create`, then
+`member` `create` with the `community_id` the first call returned — because that id does not
+exist until the row does. The page then re-reads `getCommunities()` so the new card appears,
+and Escape, the backdrop or Cancel closes the popup without writing anything.
 
 ## Email verification happens once, at creation
 
@@ -73,9 +79,14 @@ caller's Firebase ID token from `getIdToken(auth.currentUser)` and posts it to `
 where `God.call()` runs on the server. A new page read is a new method in the matching
 `src/page_functions/` file, never a raw fetch written inside a page. That token is what
 `api/god.js` verifies. A
-browser token is held to `SELF_ACTIONS` — `user` `find`, `create` and `update`, plus
-`community` `memberOf` — and the email is taken from the token rather than the body, so a
-member can only ever list the communities they belong to. For `update`, `SELF_FIELDS`
+browser token is held to `SELF_ACTIONS` — `user` `find`, `create` and `update`,
+`community` `memberOf` and `create`, and `member` `create` — and the email is taken from
+the token rather than the body, so a member can only ever list the communities they belong
+to. `member` `create` is checked further: the server reads `community_members` for that
+`community_id` and refuses the write once the group has any members, and it overwrites
+`role` with `admin`, so a browser can attach itself only to a community it has just
+opened, never into an existing one where it would take over other people's attendance. For
+`update`, `SELF_FIELDS`
 keeps only `name` and `surname` and drops every other key from `changes`, so the allowlist
 lives on the server and not in the form. Anything else needs `GOD_SERVER_KEY`. See
 [Finding 7](findings.md#7-apigod-rejected-every-genuine-firebase-id-token-fixed) for the

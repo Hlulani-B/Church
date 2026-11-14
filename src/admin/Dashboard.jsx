@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
-import { AdminDashboardFetch } from "../page_functions/admin_dashboard.js";
-import Menu from "../components/menu.jsx";
+import { AdminDashboardFetch, ROLES } from "../page_functions/admin_dashboard.js";
+import AdminMenu from "./menu.jsx";
+import { adminState, rememberAdmin } from "./state.js";
 
 const accounts = new Auth();
 const dashboard = new AdminDashboardFetch();
@@ -23,12 +24,20 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au .bar .logo{font-size:24px;text-decoration:none}
 .au .menuwrap{display:flex;align-items:center;position:relative}
 
-.au .main{padding:56px 56px 96px;max-width:1400px;width:100%}
+.au .main{padding:56px 56px 96px;max-width:1400px;width:100%;margin:0 auto}
+.au .eyebrow{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 10px}
 .au h1{font-size:40px;line-height:1.15;margin:0 0 8px;text-transform:uppercase}
-.au h1 em{text-transform:none;font-style:italic}
 .au .sub{color:var(--muted);margin:0;font-size:17px}
 
 .au h3{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:40px 0 14px;font-weight:600}
+
+/* One box over the list, and it filters what this page already holds: a name, a surname,
+   an address, or any words from more than one of them. */
+.au .find{margin:0 0 6px}
+.au .find input{width:100%;max-width:460px;font:inherit;font-size:16px;color:var(--text);background:#fff;border:1px solid #bdbdbd;border-radius:2px;padding:11px 14px}
+.au .find input:focus{outline:none;border-color:#111}
+.au .clear{background:none;border:0;padding:0;font:inherit;font-size:14px;color:var(--muted);cursor:pointer;border-bottom:1px solid var(--line)}
+.au .clear:hover{color:#111;border-bottom-color:#111}
 
 /* The roster is the wide column and the join code sits beside it once there is room,
    so an admin reads the list and the code without scrolling between the two. */
@@ -54,6 +63,19 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au .rowmenu{position:absolute;top:32px;right:0;background:#fff;border:1px solid var(--line);border-radius:2px;box-shadow:0 10px 26px rgba(0,0,0,.14);z-index:12;min-width:170px}
 .au .rowmenu button{display:block;width:100%;text-align:left;background:#fff;border:0;padding:11px 14px;font-size:14px;font-family:inherit;cursor:pointer;color:#a11111}
 .au .rowmenu button:hover{background:#f4f4f4}
+.au .rowmenu button.plain{color:#111}
+
+/* Choosing a role is a decision about what somebody can open, so each choice says that on
+   its own line rather than leaving the word to be remembered. */
+.au .roles{display:grid;gap:10px;margin:18px 0 0}
+.au .roles label{display:flex;gap:11px;align-items:flex-start;border:1px solid var(--line);border-radius:2px;padding:12px 14px;cursor:pointer;font-size:14px;color:var(--text)}
+.au .roles label.on{border-color:#111;box-shadow:inset 0 0 0 1px #111}
+.au .roles input{margin:2px 0 0}
+.au .roles .what{display:flex;flex-direction:column;gap:3px}
+.au .roles .what b{font-size:15px;font-weight:600;text-transform:capitalize}
+.au .roles .what span{color:var(--muted);font-size:13px;line-height:1.45}
+.au .pop.wide{max-width:520px}
+.au .pop .go{margin-top:0}
 
 /* Confirming a removal is a popup, because it changes the code for everybody. */
 .au .veil{position:fixed;inset:0;background:rgba(20,20,20,.5);display:flex;align-items:center;justify-content:center;padding:24px;z-index:20}
@@ -89,17 +111,24 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 }
 `;
 
+// A role in the sentence that says somebody holds it now.
+function spoken(role) {
+  return role === "admin" ? "an admin" : `a ${role}`;
+}
+
 export default function AdminDashboard() {
-  const navigate = useNavigate();
   /*
-    The community whose card was clicked on /community. This page administers that one
-    row of community and never another, so there is no picker here to choose from and no
-    fallback to whichever community happens to come back first.
+    Which community this page administers and whose address opened it. The card on
+    /community hands both over, and src/admin/state.js fills in whatever the link did not
+    carry from the last community this browser opened — so a reload, a bookmark or the back
+    button lands on this community rather than on an empty page. Nothing is ever guessed
+    from the roster: this page shows one row of community and no other.
   */
-  const communityId = useLocation().state?.community_id || "";
+  const route = useLocation().state;
   const [signedIn, setSignedIn] = useState(null);
+  const [noSession, setNoSession] = useState(false);
   const [community, setCommunity] = useState(null);
-  const [rows, setRows] = useState([]);
+  const [roster, setRoster] = useState({ community_id: "", rows: [] });
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
@@ -108,18 +137,113 @@ export default function AdminDashboard() {
   const [confirm, setConfirm] = useState(null);
   const [confirmError, setConfirmError] = useState("");
   const [removing, setRemoving] = useState(false);
+  /*
+    The role being chosen for one person: who it is for, which of the three has been clicked,
+    and whether the write is still on its way. The person is tagged with the community that
+    listed them, exactly as a removal is, because the roster underneath is being replaced a
+    moment after this saves.
+  */
+  const [assign, setAssign] = useState(null);
+  const [chosen, setChosen] = useState("");
+  const [assignError, setAssignError] = useState("");
+  const [saving, setSaving] = useState(false);
+  /*
+    One search box over the roster. The list is read whole and it is small, so typing filters
+    what this page already holds rather than asking the server again.
+  */
+  const [find, setFind] = useState("");
 
-  const joinCode = community?.join_id || "";
+  const admin = adminState({ email: signedIn?.email }, route);
+  const communityId = admin.community_id;
+
+  /*
+    An answer belongs to the community that was asked, so it is only ever shown for that
+    one. Coming back to an earlier entry in the history, or a response that arrives after
+    the community changed, leaves this page holding the other community's row and roster:
+    both are checked against the id on screen, and a mismatch shows nothing rather than
+    somebody else's members. The heading takes the name that was just read, so the list and
+    the name above it cannot disagree.
+  */
+  const shown = community?.community_id === communityId ? community : null;
+  const rows = roster.community_id === communityId ? roster.rows : [];
+  /*
+    The search works on what is already read: every word typed has to turn up in the row's
+    name, surname or address, whatever the case, so "thabo", "mokoena", "thabo m" and
+    "gmail" all find the same person.
+  */
+  const terms = find.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const listed = terms.length
+    ? rows.filter((one) =>
+        terms.every((term) =>
+          `${one.name || ""} ${one.surname || ""} ${one.email || ""}`
+            .toLowerCase()
+            .includes(term),
+        ),
+      )
+    : rows;
+  // The row this browser's own address is in, and the one row with no menu on it.
+  const mine = (admin.email || "").toLowerCase();
+  // The person a removal was asked for belongs to the community that listed them.
+  const target = confirm?.community_id === communityId ? confirm : null;
+  // and so does the person a role is being chosen for.
+  const person = assign?.community_id === communityId ? assign : null;
+  const heading = { ...admin, name: shown?.name || admin.name };
+  const { name: adminName, email: adminEmail } = heading;
+  const joinCode = shown?.join_id || "";
+
+  useEffect(() => {
+    rememberAdmin({ community_id: communityId, name: adminName, email: adminEmail });
+  }, [communityId, adminName, adminEmail]);
 
   function askRemove(row) {
     setMenuFor("");
     setConfirmError("");
-    setConfirm(row);
+    setConfirm({ ...row, community_id: communityId });
   }
 
   function closeConfirm() {
     if (removing) return;
     setConfirm(null);
+  }
+
+  function askAssign(row) {
+    setMenuFor("");
+    setAssignError("");
+    setChosen(row.role);
+    setAssign({ ...row, community_id: communityId });
+  }
+
+  function closeAssign() {
+    if (saving) return;
+    setAssign(null);
+  }
+
+  /*
+    One click, one new role for one person in this community. The write is the server's:
+    /api/god has already shown the caller is an admin of this community before it let the
+    popup open at all. The list is read again afterwards, so what the table shows is the role
+    the row holds rather than the one that was typed. A refusal — an address that is not here,
+    the community's only admin giving the role up — stays in the popup, where the choice was
+    made.
+  */
+  async function saveRole() {
+    setSaving(true);
+    setAssignError("");
+    try {
+      const link = await dashboard.assignRole(communityId, person.email, chosen);
+      setRoster({
+        community_id: communityId,
+        rows: await dashboard.getMembers(communityId),
+      });
+      setNote(
+        `${person.name || person.email} is now ${spoken(link.role)} of ${shown?.name || "this community"}.`,
+      );
+      setAssign(null);
+    } catch (e) {
+      setAssignError(e.message);
+    } finally {
+      setSaving(false);
+    }
   }
 
   /*
@@ -132,12 +256,12 @@ export default function AdminDashboard() {
     setRemoving(true);
     setConfirmError("");
     try {
-      const row = await dashboard.removeMember(communityId, confirm.email);
+      const row = await dashboard.removeMember(communityId, target.email);
       setCommunity(row);
       setCopied(false);
-      setRows(await dashboard.getMembers(communityId));
+      setRoster({ community_id: communityId, rows: await dashboard.getMembers(communityId) });
       setNote(
-        `${confirm.name} ${confirm.surname} is out of ${row.name}. Its join code is now ${row.join_id}, so tell everyone the new one.`,
+        `${target.name} ${target.surname} is out of ${row.name}. Its join code is now ${row.join_id}, so tell everyone the new one.`,
       );
       setConfirm(null);
     } catch (e) {
@@ -150,26 +274,36 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     return accounts.onChange((user) => {
-      if (!user) {
-        navigate("/login", { replace: true });
-        return;
-      }
-      setSignedIn(user);
+      /*
+        Nobody is thrown out of here. A null means this browser could not read its saved
+        session, which is not a sign-out — only Log out in the menu leaves, and it says so
+        itself. The page waits, then offers the way back in.
+      */
+      setSignedIn(user || null);
+      setNoSession(!user);
     });
-  }, [navigate]);
+  }, []);
 
-  // Both reads describe the community that was chosen, and nothing else.
+  /*
+    Both reads describe the community that was chosen, and nothing else. They wait for the
+    session: asking for the roster before anybody is known to be signed in used to fail
+    with a token read off no-one, and the page then showed that instead of a list. The
+    address, not the session object, is what the read waits on — Firebase hands out a new
+    object for the same person every time it reloads the account, and the page would fetch
+    again on each of those.
+  */
+  const email = signedIn?.email || "";
   useEffect(() => {
-    if (!communityId) return;
+    if (!email || !communityId) return;
     dashboard
       .getCommunity(communityId)
       .then(setCommunity)
       .catch((e) => setError((current) => current || e.message));
     dashboard
       .getMembers(communityId)
-      .then(setRows)
+      .then((people) => setRoster({ community_id: communityId, rows: people }))
       .catch((e) => setError((current) => current || e.message));
-  }, [communityId]);
+  }, [communityId, email]);
 
   // A row menu is open until something else is clicked, or Escape.
   useEffect(() => {
@@ -196,6 +330,16 @@ export default function AdminDashboard() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [confirm, removing]);
+
+  // Escape leaves the role popup too, unless the write is still on its way.
+  useEffect(() => {
+    if (!assign) return undefined;
+    function onKey(event) {
+      if (event.key === "Escape" && !saving) setAssign(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [assign, saving]);
 
   async function copyCode() {
     setError("");
@@ -232,7 +376,14 @@ export default function AdminDashboard() {
       <div className="au loading">
         <style>{css}</style>
         <div className="main">
-          <p className="sub">Checking your sign-in…</p>
+          {noSession ? (
+            <p className="sub">
+              This browser holds no saved session, so there is nothing to open.{" "}
+              <a href="/login">Log in</a>
+            </p>
+          ) : (
+            <p className="sub">Checking your sign-in…</p>
+          )}
         </div>
       </div>
     );
@@ -244,14 +395,20 @@ export default function AdminDashboard() {
 
       <div className="bar">
         <div className="menuwrap">
-          <Menu />
+          <AdminMenu state={heading} />
         </div>
         <a className="logo serif" href="/community">Kopano</a>
       </div>
 
       <main className="main">
-        <h1 className="serif">Admin <em>dashboard</em></h1>
-        <p className="sub">{signedIn.email}</p>
+        <p className="eyebrow">Admin</p>
+        {/*
+          This page is about one community, so its name is the biggest thing here rather
+          than a small label over the list. It is the name the card carried, or the one this
+          page just read, whichever is known — the heading does not wait for the read.
+        */}
+        <h1 className="serif">{heading.name || "This community"}</h1>
+        <p className="sub">{admin.email}</p>
 
         {error && <div className="note bad">{error}</div>}
         {note && !error && <div className="note">{note}</div>}
@@ -264,8 +421,28 @@ export default function AdminDashboard() {
         ) : (
           <div className="grid">
             <section className="roster">
-              <h3>Members{community ? ` of ${community.name}` : ""}</h3>
+              <h3>Members</h3>
               {rows.length ? (
+                <div className="find">
+                  <input
+                    type="search"
+                    value={find}
+                    placeholder="Search by name, surname or email"
+                    aria-label="Search the members"
+                    onChange={(event) => setFind(event.target.value)}
+                  />
+                  {terms.length ? (
+                    <p className="hint">
+                      {listed.length} of {rows.length}{" "}
+                      {rows.length === 1 ? "person" : "people"} match.{" "}
+                      <button className="clear" type="button" onClick={() => setFind("")}>
+                        Clear
+                      </button>
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+              {listed.length ? (
                 <table>
                   <thead>
                     <tr>
@@ -277,40 +454,53 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((one) => (
+                    {listed.map((one) => (
                       <tr key={one.email}>
                         <td className="name">{one.name}</td>
                         <td>{one.surname}</td>
                         <td>{one.email}</td>
                         <td><span className={one.role === "admin" ? "role admin" : "role"}>{one.role}</span></td>
                         <td className="last">
-                          <div className="dotswrap">
-                            <button
-                              className={menuFor === one.email ? "dots on" : "dots"}
-                              type="button"
-                              aria-label={`Options for ${one.name} ${one.surname}`}
-                              aria-haspopup="true"
-                              aria-expanded={menuFor === one.email}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setMenuFor((current) => (current === one.email ? "" : one.email));
-                              }}
-                            >
-                              ⋮
-                            </button>
-                            {menuFor === one.email && (
-                              <div className="rowmenu">
-                                <button type="button" onClick={() => askRemove(one)}>
-                                  Remove member
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                          {/*
+                            The signed-in address is listed like anybody else and offers
+                            nothing: this page changes other people's roles and memberships, and
+                            it is not the way an admin leaves a community or hands their own role
+                            on.
+                          */}
+                          {one.email?.toLowerCase() === mine ? null : (
+                            <div className="dotswrap">
+                              <button
+                                className={menuFor === one.email ? "dots on" : "dots"}
+                                type="button"
+                                aria-label={`Options for ${one.name} ${one.surname}`}
+                                aria-haspopup="true"
+                                aria-expanded={menuFor === one.email}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setMenuFor((current) => (current === one.email ? "" : one.email));
+                                }}
+                              >
+                                ⋮
+                              </button>
+                              {menuFor === one.email && (
+                                <div className="rowmenu">
+                                  <button className="plain" type="button" onClick={() => askAssign(one)}>
+                                    Assign role
+                                  </button>
+                                  <button type="button" onClick={() => askRemove(one)}>
+                                    Remove member
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              ) : terms.length ? (
+                !error && <p className="hint">Nobody here matches “{find.trim()}”.</p>
               ) : (
                 !error && <p className="sub">Loading…</p>
               )}
@@ -327,7 +517,7 @@ export default function AdminDashboard() {
                 )}
               </div>
               <p className="hint">
-                People type this code to find {community?.name || "the community"}.
+                People type this code to find {shown?.name || "the community"}.
               </p>
 
               <button className="go" type="button" onClick={changeCode} disabled={busy}>
@@ -343,7 +533,7 @@ export default function AdminDashboard() {
         <a className="back" href="/community">Back to your communities</a>
       </main>
 
-      {confirm && (
+      {target && (
         <div
           className="veil"
           role="dialog"
@@ -355,10 +545,10 @@ export default function AdminDashboard() {
             <h2 className="serif">Remove this member?</h2>
             <p>
               <span className="who">
-                {confirm.name} {confirm.surname} ({confirm.email})
+                {target.name} {target.surname} ({target.email})
               </span>{" "}
-              stops being a member of {community?.name} — their role here is{" "}
-              <span className="who">{confirm.role}</span>. Their attendance and testimonies
+              stops being a member of {shown?.name} — their role here is{" "}
+              <span className="who">{target.role}</span>. Their attendance and testimonies
               stay recorded against their address.
             </p>
             <p>
@@ -374,6 +564,61 @@ export default function AdminDashboard() {
               </button>
               <button className="danger" type="button" onClick={removeMember} disabled={removing}>
                 {removing ? "Removing…" : "Remove and change code"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {person && (
+        <div
+          className="veil"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Assign a role to ${person.name} ${person.surname}`}
+          onClick={closeAssign}
+        >
+          <div className="pop wide" onClick={(event) => event.stopPropagation()}>
+            <h2 className="serif">Assign a role</h2>
+            <p>
+              <span className="who">
+                {person.name} {person.surname} ({person.email})
+              </span>{" "}
+              is <span className="who">{person.role}</span> in{" "}
+              {shown?.name || "this community"}. The choice takes effect as soon as it is saved.
+            </p>
+
+            <div className="roles">
+              {ROLES.map((one) => (
+                <label key={one.role} className={chosen === one.role ? "on" : undefined}>
+                  <input
+                    type="radio"
+                    name="role"
+                    value={one.role}
+                    checked={chosen === one.role}
+                    onChange={() => setChosen(one.role)}
+                  />
+                  <span className="what">
+                    <b>{one.role}</b>
+                    <span>{one.does}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            {assignError && <p className="fail">{assignError}</p>}
+
+            <div className="row">
+              <button className="ghost" type="button" onClick={closeAssign} disabled={saving}>
+                Cancel
+              </button>
+              <button
+                className="go"
+                type="button"
+                onClick={saveRole}
+                disabled={saving || chosen === person.role}
+              >
+                {saving ? "Saving…" : "Save role"}
               </button>
             </div>
           </div>

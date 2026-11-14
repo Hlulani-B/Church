@@ -3,12 +3,32 @@ import { callGod } from './god.js'
 // Page fetches for the admin dashboard. One file per area lives in this folder, and the
 // JSX only ever calls these — never Supabase, never /api/god by hand.
 
+/*
+  The three roles the dashboard can put somebody in, each with the line that says what it is
+  for. The same three words are the alphabet the server accepts, in
+  `src/functions/admin_dashboard.js`; this copy exists so a screen can list the choices and
+  explain them without importing server code, which would pull the service key's world into
+  the browser bundle.
+*/
+export const ROLES = [
+  { role: 'member', does: 'Marks themselves attending or not, gives a reason, shares a testimony.' },
+  {
+    role: 'leader',
+    does: 'A member first, and then this community and its attendance to read — nothing to change.',
+  },
+  {
+    role: 'admin',
+    does: 'All of that, plus who holds which role, who leaves, and the join code.',
+  },
+]
+
 export class AdminDashboardFetch {
   /*
     God's `admin` `roster`, which joins community_members to users for one community and
     answers [{ email, name, surname, role }] — admins first, then leaders, then members.
-    /api/god only answers this for an admin of that community, and it reads the caller's
-    role off the id token rather than anything in this request.
+    /api/god only answers this for a leader or an admin of that community, and it reads the
+    caller's role off the id token rather than anything in this request. A leader reads the
+    list; the role in it is only ever written by an admin.
   */
   async getMembers(community_id) {
     return callGod('admin', { function: 'roster', community_id })
@@ -37,6 +57,18 @@ export class AdminDashboardFetch {
   async removeMember(community_id, email) {
     await callGod('member', { function: 'remove', community_id, member_email: email })
     return callGod('admin', { function: 'changeCode', community_id })
+  }
+
+  /*
+    Puts one person in this community in a different role: 'member', 'leader' or 'admin'.
+    Nothing about the write is decided here. /api/god takes the caller's address off their id
+    token, refuses anybody who is not an admin of this community, refuses an address that has
+    no link in it, and refuses the one change a community cannot survive — its only admin
+    giving the role up. The updated link comes back, so the screen says what the row holds
+    rather than what this click asked for.
+  */
+  async assignRole(community_id, email, role) {
+    return callGod('admin', { function: 'assign', community_id, member_email: email, role })
   }
 
   /*

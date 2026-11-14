@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
 import { UserFetch } from "../page_functions/user.js";
 import Menu from "../components/menu.jsx";
@@ -42,8 +41,8 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 `;
 
 export default function ProfilePage() {
-  const navigate = useNavigate();
   const [signedIn, setSignedIn] = useState(null);
+  const [noSession, setNoSession] = useState(false);
   const [member, setMember] = useState(null);
   const [name, setName] = useState("");
   const [surname, setSurname] = useState("");
@@ -53,11 +52,14 @@ export default function ProfilePage() {
 
   useEffect(() => {
     return accounts.onChange((user) => {
-      if (!user) {
-        navigate("/login", { replace: true });
-        return;
-      }
-      setSignedIn(user);
+      /*
+        A null here means this browser could not read its saved session, which is not a
+        sign-out, so the page keeps the person where they are instead of sending them off.
+        Log out in the menu is the only thing that leaves.
+      */
+      setSignedIn(user || null);
+      setNoSession(!user);
+      if (!user) return;
       users.find()
         .then((row) => {
           setMember(row);
@@ -68,7 +70,7 @@ export default function ProfilePage() {
         })
         .catch((fetchError) => setError(fetchError.message));
     });
-  }, [navigate]);
+  }, []);
 
   const dirty = name !== (member?.name || "") || surname !== (member?.surname || "");
   const canSave = Boolean(member) && !busy && dirty && name.trim() && surname.trim();
@@ -94,7 +96,14 @@ export default function ProfilePage() {
       <div className="au">
         <style>{css}</style>
         <article className="doc">
-          <p className="sub">Checking your sign-in…</p>
+          {noSession ? (
+            <p className="sub">
+              This browser holds no saved session, so there is nothing to change here.{" "}
+              <a href="/login">Log in</a>
+            </p>
+          ) : (
+            <p className="sub">Checking your sign-in…</p>
+          )}
         </article>
       </div>
     );

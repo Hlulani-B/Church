@@ -16,6 +16,14 @@ import { createClient } from '@supabase/supabase-js'
 */
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
+/*
+  The three roles a community member can hold, exactly as community_members stores them. The
+  table has its own check on the column, so a fourth word is refused twice over: by this list
+  with a sentence around it, and by the constraint if anything ever reaches the database
+  without passing through here.
+*/
+export const ROLES = ['member', 'leader', 'admin']
+
 export function generateJoinId(length = 6) {
   const bytes = new Uint8Array(length)
   crypto.getRandomValues(bytes)
@@ -57,6 +65,30 @@ export class AdminDashboard {
       name: users?.name ?? '',
       surname: users?.surname ?? '',
     }))
+  }
+
+  /*
+    Moving one person within this community: the address is only ever read back off the
+    community it is being changed in, and only /api/god decides whether the caller is allowed
+    to ask. The updated link comes back rather than the role that was typed, so a screen says
+    what the row now holds instead of repeating what it sent.
+  */
+  async assign(community_id, member_email, role) {
+    this.#id(community_id)
+    if (!member_email) throw new Error('member_email is required')
+    if (!ROLES.includes(role)) {
+      throw new Error(`a role is one of ${ROLES.join(', ')}, not '${role}'`)
+    }
+    const { data, error } = await this.client
+      .from('community_members')
+      .update({ role })
+      .eq('community_id', community_id)
+      .eq('email', member_email)
+      .select()
+      .maybeSingle()
+    if (error) throw error
+    if (!data) throw new Error(`${member_email} is not a member of that community`)
+    return data
   }
 
   // True when some community already answers to that code.

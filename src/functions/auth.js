@@ -41,16 +41,30 @@ export class Auth {
   }
 
   /*
-    The listener is only attached once the storage choice in src/firebase.js has
-    settled, so a slow IndexedDB read cannot arrive as null and bounce a signed-in
-    visitor to /login. The first callback is therefore always the settled state.
+    The listener is only attached once the storage choice in src/firebase.js has settled,
+    so a slow IndexedDB read is never reported as a signed-out visitor. The first callback
+    is therefore always the settled state.
+
+    After that first callback only a change of person is passed on — signing out, or a
+    different address. Firebase re-reports the same user whenever it reloads the account,
+    and a page that fetches in its listener would fetch again on every one of those. A page
+    that also navigated on each report is what looked like the app refreshing itself.
   */
   onChange(listener) {
     let stop = null
     let cancelled = false
+    let seen = null
+    let settled = false
     ready.then(() => {
       if (cancelled) return
-      stop = onAuthStateChanged(this.auth, (user) => listener(view(user)))
+      stop = onAuthStateChanged(this.auth, (user) => {
+        const account = view(user)
+        const who = account?.uid ?? null
+        if (settled && who === seen) return
+        settled = true
+        seen = who
+        listener(account)
+      })
     })
     return () => {
       cancelled = true

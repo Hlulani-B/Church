@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
+import { forgetAdmin } from "../admin/state.js";
 
 const accounts = new Auth();
 
@@ -21,7 +22,13 @@ const css = `
 .kp-trigger{background:none;border:1px solid #d9d9d9;border-radius:2px;padding:7px 12px;font-size:15px;line-height:1;cursor:pointer;color:#111}
 `;
 
-export default function Menu() {
+/*
+  The slide-over every signed-in page carries. `items` is what a particular screen puts
+  above Profile and Log out — src/admin/menu.jsx is the only caller that passes any — and
+  each item's `state` travels with the navigation, the same way a community card hands the
+  community to the page it opens.
+*/
+export default function Menu({ heading = "Menu", items = [] }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
@@ -34,14 +41,17 @@ export default function Menu() {
     return () => window.removeEventListener("keydown", close);
   }, [open]);
 
-  function go(to) {
+  function go(to, state) {
     setOpen(false);
-    navigate(to);
+    navigate(state ? { pathname: to, state } : to);
   }
 
   async function leave() {
     setOpen(false);
     await accounts.signOut();
+    // The next person to sign in on this browser is not the one who left, so the
+    // community and address the admin screens were carrying go with them.
+    forgetAdmin();
     navigate("/login", { replace: true });
   }
 
@@ -54,14 +64,19 @@ export default function Menu() {
 
       <div className={`kp-scrim${open ? " on" : ""}`} onClick={() => setOpen(false)} />
 
-      <aside className={`kp-panel${open ? " on" : ""}`} role="dialog" aria-modal="true" aria-label="Menu">
+      <aside className={`kp-panel${open ? " on" : ""}`} role="dialog" aria-modal="true" aria-labelledby="kp-heading">
         <div className="head">
-          <span className="t">Menu</span>
+          <span className="t" id="kp-heading">{heading}</span>
           <button className="x" type="button" aria-label="Close menu" onClick={() => setOpen(false)}>
             &times;
           </button>
         </div>
         <nav>
+          {items.map((one) => (
+            <button key={one.to} type="button" onClick={() => go(one.to, one.state)}>
+              {one.label}
+            </button>
+          ))}
           <button type="button" onClick={() => go("/profile")}>Profile</button>
           <button className="ghost" type="button" onClick={leave}>Log out</button>
         </nav>

@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
 import Menu from "../components/menu.jsx";
 
@@ -36,25 +35,34 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 `;
 
 export default function MemberDashboard() {
-  const navigate = useNavigate();
   const [signedIn, setSignedIn] = useState(null);
+  const [noSession, setNoSession] = useState(false);
 
   useEffect(() => {
     return accounts.onChange((user) => {
-      if (!user) {
-        navigate("/login", { replace: true });
-        return;
-      }
-      setSignedIn(user);
+      /*
+        A null here means this browser could not read its saved session, which is not a
+        sign-out, so the page keeps the person where they are instead of sending them off.
+        Log out in the menu is the only thing that leaves.
+      */
+      setSignedIn(user || null);
+      setNoSession(!user);
     });
-  }, [navigate]);
+  }, []);
 
   if (!signedIn) {
     return (
       <div className="au loading">
         <style>{css}</style>
         <div className="main">
-          <p className="sub">Checking your sign-in…</p>
+          {noSession ? (
+            <p className="sub">
+              This browser holds no saved session, so there is nothing to open here.{" "}
+              <a href="/login">Log in</a>
+            </p>
+          ) : (
+            <p className="sub">Checking your sign-in…</p>
+          )}
         </div>
       </div>
     );

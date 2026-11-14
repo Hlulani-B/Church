@@ -45,15 +45,21 @@ export class CommunityFetch {
     cannot ask its way into a higher dashboard. Returns the route it navigated to, or
     null when the address is not a member of that community at all.
 
-    The community_id travels in the route state so the dashboard opens on the card that
-    was clicked. Without it those pages would have to guess, and a guess is how somebody
-    ends up administering the wrong fellowship.
+    The card you clicked travels with you: community_id, its name and your own address.
+    Every screen behind this one is about one community, and it reads those three from the
+    route rather than guessing. A guess is how somebody ends up administering the wrong
+    fellowship, and a name the pages each had to fetch themselves is a header that arrives
+    late or not at all.
   */
-  async navigateTo(community_id, email, navigate) {
-    const link = await callGod('member', { function: 'find', community_id, email })
+  async navigateTo(community, email, navigate) {
+    const link = await callGod('member', {
+      function: 'find',
+      community_id: community.community_id,
+      email,
+    })
     const route = DASHBOARDS[link?.role]
     if (!route) return null
-    navigate(route, { state: { community_id } })
+    navigate(route, { state: { community_id: community.community_id, name: community.name, email } })
     return route
   }
 }

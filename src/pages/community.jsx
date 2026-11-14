@@ -75,6 +75,7 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 export default function CommunityPage() {
   const navigate = useNavigate();
   const [signedIn, setSignedIn] = useState(null);
+  const [noSession, setNoSession] = useState(false);
   const [member, setMember] = useState(null);
   const [mine, setMine] = useState([]);
   const [note, setNote] = useState("");
@@ -115,7 +116,7 @@ export default function CommunityPage() {
 
   async function openDashboard(one) {
     try {
-      if (!(await communities.navigateTo(one.community_id, signedIn.email, navigate))) {
+      if (!(await communities.navigateTo(one, signedIn.email, navigate))) {
         setNote(`You are not a member of ${one.name}, so there is no dashboard to open.`);
       }
     } catch (error) {
@@ -125,11 +126,15 @@ export default function CommunityPage() {
 
   useEffect(() => {
     return accounts.onChange((user) => {
-      if (!user) {
-        navigate("/login", { replace: true });
-        return;
-      }
-      setSignedIn(user);
+      /*
+        Both reads are about the person who just arrived, so they belong here rather than
+        in an effect of their own. A null does not send anybody to /login: this browser
+        could not read its saved session, which is not the same as signing out, and the
+        page says so and waits.
+      */
+      setSignedIn(user || null);
+      setNoSession(!user);
+      if (!user) return;
       users
         .find()
         .then((row) => {
@@ -146,7 +151,7 @@ export default function CommunityPage() {
         .then(setMine)
         .catch((error) => setNote((current) => current || error.message));
     });
-  }, [navigate]);
+  }, []);
 
   useEffect(() => {
     if (!creating) return undefined;
@@ -162,7 +167,14 @@ export default function CommunityPage() {
       <div className="au loading">
         <style>{css}</style>
         <div className="main">
-          <p className="sub">Checking your sign-in…</p>
+          {noSession ? (
+            <p className="sub">
+              This browser holds no saved session, so there is nothing to open.{" "}
+              <a href="/login">Log in</a>
+            </p>
+          ) : (
+            <p className="sub">Checking your sign-in…</p>
+          )}
         </div>
       </div>
     );

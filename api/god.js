@@ -76,6 +76,8 @@ export class God {
       case 'update':
         if (changes === undefined) throw badRequest("params.changes is required for 'update'")
         return client.update(...ids(), changes)
+      case 'changeCode':
+        return client.changeCode(...ids())
       case 'remove':
         return client.remove(...ids())
       case 'record':
@@ -154,19 +156,17 @@ async function verifiedEmail(token) {
 // and only the communities its own email belongs to. Opening a community is allowed
 // because the guard below pairs it with joining that new community as its first member.
 // The roster, the community row and its join code are on the list too, but they describe
-// other people, so #requireAdmin answers them only for an admin of that community.
+// other people, so the admin check below answers them only for an admin of that community.
 const SELF_ACTIONS = {
   user: ['find', 'create', 'update'],
-  community: ['memberOf', 'create', 'find', 'update'],
-  member: ['create', 'find', 'members'],
+  community: ['memberOf', 'create', 'find', 'changeCode'],
+  member: ['create', 'find', 'members', 'remove'],
 }
 // email is the primary key of users, so a browser must never move a row onto
-// someone else's address; everything except these two columns is dropped. The only
-// column of community an admin may change by hand is the code people type to join.
-const SELF_FIELDS = { user: ['name', 'surname'], community: ['join_id'] }
-// The generated code is six uppercase hex characters, so a hand-written one is held to
-// the same shape: short enough to say aloud, no separators, no case ambiguity.
-const JOIN_CODE = /^[A-Z0-9]{6}$/
+// someone else's address; everything except these two columns is dropped. community has
+// no entry because a join code is never read off a request: 'changeCode' draws one on the
+// server, and writing a code somebody typed by hand stays behind GOD_SERVER_KEY.
+const SELF_FIELDS = { user: ['name', 'surname'] }
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -203,14 +203,14 @@ export default async function handler(req, res) {
     params = { ...params, email }
     /*
       These read or change what a community looks like to other people: its roster, its
-      own row, its join code. The caller's community_members row for that community_id
-      settles it, taken from the token rather than the body, so an admin of one group
-      cannot reach into another and a plain member cannot rename the group.
+      own row, its join code, and who is in it. The caller's community_members row for
+      that community_id settles it, taken from the token rather than the body, so an admin
+      of one group cannot reach into another and a plain member cannot rename the group.
     */
     const links = new CommunityMember(god.url, god.key)
     const needsAdmin =
-      (action === 'member' && params.function === 'members') ||
-      (action === 'community' && ['find', 'update'].includes(params.function))
+      (action === 'member' && ['members', 'remove'].includes(params.function)) ||
+      (action === 'community' && ['find', 'changeCode'].includes(params.function))
     if (needsAdmin) {
       if (!params.community_id) {
         return res.status(400).json({ error: 'params.community_id is required for that request' })
@@ -222,6 +222,39 @@ export default async function handler(req, res) {
           .json({ error: 'only an admin of that community can read its members or change its code' })
       }
     }
+    /*
+      Removing somebody is the one browser action here that speaks about another person, so
+      the target arrives as member_email and only becomes params.email — what the class
+      deletes on — once the caller has been shown to be an admin of this community. Three
+      things follow from that. An address that is not in the community is a 400 rather than
+      a silent no-op. One admin cannot delete another; only the admin themselves can do
+      that to their own row, because otherwise any admin could empty a group of its
+      managers. And the last member cannot be removed at all: 'member' create is open to a
+      browser while a community has no members, so an emptied community would be there for
+      whoever guessed its id to claim as admin.
+    */
+    if (action === 'member' && params.function === 'remove') {
+      const target = String(params.member_email || '').trim()
+      if (!target) {
+        return res.status(400).json({ error: 'params.member_email is required to remove a member' })
+      }
+      const row = await links.find(target, params.community_id)
+      if (!row) {
+        return res.status(400).json({ error: `${target} is not a member of that community` })
+      }
+      if (row.role === 'admin' && target !== email) {
+        return res
+          .status(403)
+          .json({ error: 'only that admin can remove themselves from this community' })
+      }
+      const everyone = await links.all({ community_id: params.community_id })
+      if (everyone.length <= 1) {
+        return res
+          .status(403)
+          .json({ error: 'that community has only one member, so removing them would leave it unowned' })
+      }
+      params = { ...params, email: target }
+    }
     if (params.function === 'update') {
       const allowed = SELF_FIELDS[action] ?? []
       const changes = Object.fromEntries(
@@ -231,13 +264,6 @@ export default async function handler(req, res) {
         return res
           .status(400)
           .json({ error: `params.changes must hold at least one of ${allowed.join(', ')}` })
-      }
-      // A hand-written join code is held to the shape of a generated one.
-      if (changes.join_id !== undefined) {
-        changes.join_id = String(changes.join_id).toUpperCase()
-        if (!JOIN_CODE.test(changes.join_id)) {
-          return res.status(400).json({ error: 'join_id must be six characters, A-Z or 0-9' })
-        }
       }
       params = { ...params, changes }
     }

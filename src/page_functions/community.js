@@ -44,12 +44,16 @@ export class CommunityFetch {
     address on the caller's own id token rather than the one passed in, so a browser
     cannot ask its way into a higher dashboard. Returns the route it navigated to, or
     null when the address is not a member of that community at all.
+
+    The community_id travels in the route state so the dashboard opens on the card that
+    was clicked. Without it those pages would have to guess, and a guess is how somebody
+    ends up administering the wrong fellowship.
   */
   async navigateTo(community_id, email, navigate) {
     const link = await callGod('member', { function: 'find', community_id, email })
     const route = DASHBOARDS[link?.role]
     if (!route) return null
-    navigate(route)
+    navigate(route, { state: { community_id } })
     return route
   }
 }

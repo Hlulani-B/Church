@@ -33,7 +33,7 @@ message with a link to create an account instead of redirecting there.
 | `/terms` | `src/pages/TCs.jsx` | The policy text, linked from the agree checkbox on `/signup` |
 | `/community` | `src/pages/community.jsx` | The signed-in home page: greets the visitor from their own `users` row, lists their communities and opens new ones from a popup |
 | `/profile` | `src/pages/profile.jsx` | Changes **name and surname only**, through `/api/god` `user` `update` |
-| `/admin-dashboard` | `src/admin/Dashboard.jsx` | Roster of the community you administer — name, surname, email and role from `users` joined onto `community_members` — with its join code to copy or replace |
+| `/admin-dashboard` | `src/admin/Dashboard.jsx` | Roster of **the community you clicked** — name, surname, email and role from `users` joined onto `community_members` — with that community's join code beside it to copy or draw again, and a ⋮ menu on every row to remove that person |
 | `/leader-dashboard` | `src/leader/Dashboard.jsx` | Placeholder leader screen, reached by opening a community you lead |
 | `/member-dashboard` | `src/member/Dashboard.jsx` | Placeholder member screen, reached by opening a community you belong to |
 
@@ -51,17 +51,29 @@ server twice — `community` `create`, then
 not exist until the row does. The page then re-reads `getCommunities()` so the new card
 appears, and Escape, the backdrop or Cancel closes the popup without writing anything. The
 first response also carries `join_id`, which the database generates rather than the app —
-see [Database](database.md) — and the confirmation names that code, because nothing else in
-the interface shows it yet.
+see [Database](database.md) — and the confirmation names that code, which is also what the
+admin dashboard of that community shows beside its roster.
 
-Clicking a community card sends the visitor to the dashboard for their role in it.
-`CommunityFetch.navigateTo(community_id, email, navigate)` reads the `community_members`
-row for that pair through `/api/god` `member` `find`, then maps the role: `admin` to
-`/admin-dashboard`, `leader` to `/leader-dashboard`, `member` to `/member-dashboard`. The
-`/admin-dashboard` is a real screen: `CommunityFetch.getCommunities()` picks the community,
-then `AdminDashboardFetch` in `src/page_functions/admin_dashboard.js` reads its roster with
-`getMembers(community_id)` and its code with `getJoinCode(community_id)`, and
-`changeJoinCode(community_id, join_id)` replaces the code. The two other dashboards,
+Clicking a community card sends the visitor to the dashboard for their role in **that**
+community. `CommunityFetch.navigateTo(community_id, email, navigate)` reads the
+`community_members` row for that pair through `/api/god` `member` `find`, then maps the
+role — `admin` to `/admin-dashboard`, `leader` to `/leader-dashboard`, `member` to
+`/member-dashboard` — and puts the `community_id` in the route state on the way. The
+dashboard reads that id and does nothing else with it: `AdminDashboardFetch` in
+`src/page_functions/admin_dashboard.js` answers the roster with `getMembers(community_id)`
+and the name and code with `getCommunity(community_id)`, and `changeJoinCode(community_id)`
+asks `/api/god` `community` `changeCode` for a brand new code — the button on the page is
+the only way to change it, there is no field to type into. Every roster row carries a ⋮
+menu with **Remove member**, and `removeMember(community_id, email)` unlinks that address
+from this community and then draws a new code in the same action, so a removal cannot
+leave the old code standing for somebody who memorised it. The popup spells out both
+halves before anything is written, because the code that everyone else types changes too.
+There is no list of the other communities
+on this page to switch between and no default to whichever row comes back first, because
+that is how an admin ends up editing the wrong fellowship; arriving without a chosen
+community — a typed URL, a bookmark — says so and links back to `/community` instead of
+guessing. On a landscape screen wide enough for two columns the join code sits to the right
+of the roster, and it drops below the list on a narrow one. The two other dashboards,
 `src/leader/Dashboard.jsx` and `src/member/Dashboard.jsx`, are still placeholders. All
 three redirect signed-out visitors like the other signed-in pages do. Two things keep the
 destination honest: the server answers `member` `find` with the address on the caller's
@@ -103,23 +115,36 @@ caller's Firebase ID token from `getIdToken(auth.currentUser)` and posts it to `
 where `God.call()` runs on the server. A new page read is a new method in the matching
 `src/page_functions/` file, never a raw fetch written inside a page. That token is what
 `api/god.js` verifies. A browser token is held to `SELF_ACTIONS` — `user` `find`, `create`
-and `update`, `community` `memberOf`, `create`, `find` and `update`, and `member` `find`,
-`create` and `members` — and the email is taken from the token rather than the body, so a
-member can only ever list the communities they belong to and read the role they hold in one.
+and `update`, `community` `memberOf`, `create`, `find` and `changeCode`, and `member`
+`find`, `create`, `members` and `remove` — and the email is taken from the token rather
+than the body, so a member can only ever list the communities they belong to and read the
+role they hold in one.
 `member` `create` is checked further: the server reads `community_members` for that
 `community_id` and refuses the write once the group has any members, and it overwrites
 `role` with `admin`, so a browser can attach itself only to a community it has just opened,
-never into an existing one where it would take over other people's attendance. Three of
+never into an existing one where it would take over other people's attendance. Four of
 those actions describe other people rather than the caller — the `members` roster,
-`community` `find` and `community` `update` — so the server looks up the role the caller's
-own token address holds in that `community_id` and answers `403` unless it is `admin`. The
-lookup cannot be argued with: `params.email` is overwritten with the token address before
-it happens, and the three requests take a `community_id` rather than an email anyway. For `update`,
-`SELF_FIELDS` keeps only `name` and `surname` on a user and only `join_id` on a community,
-and drops every other key from `changes`, so the allowlist lives on the server and not in
-the form. A hand-set `join_id` is upper-cased and must match `^[A-Z0-9]{6}$`, the shape the
-generated code has; anything else is a `400`. Anything outside all of this needs
-`GOD_SERVER_KEY`. See
+`community` `find`, `community` `changeCode` and `member` `remove` — so the server looks up
+the role the caller's own token address holds in that `community_id` and answers `403`
+unless it is `admin`. The lookup cannot be argued with: `params.email` is overwritten with
+the token address before it happens, and those requests take a `community_id` rather than an
+email anyway.
+
+Removing somebody is the one browser action that names another person, so the target arrives
+as `params.member_email` and only becomes `params.email` — what `CommunityMember.remove`
+deletes on — after the caller has been shown to be an admin of that community. Three things
+sit between the two: an address with no link in that community is a `400` rather than a
+silent no-op, one admin cannot delete another's row, and the last member cannot be removed
+at all. The second is what stops any admin from emptying a group of its managers; the third
+is what keeps the `member` `create` check honest, since that only refuses a browser once a
+community has members, and a community drained to zero would be waiting for whoever guessed
+its id to join it as admin. For `update`, `SELF_FIELDS` keeps only `name` and `surname` on a
+user and drops every other key from
+`changes`, so the allowlist lives on the server and not in the form. `community` has no
+entry there because **a join code is never read off a request**: `changeCode` draws one on
+the server with `generateJoinId()` in `src/functions/community.js`, and writing a code
+somebody typed by hand needs `GOD_SERVER_KEY`. Anything outside all of this needs
+`GOD_SERVER_KEY` too. See
 [Finding 7](findings.md#7-apigod-rejected-every-genuine-firebase-id-token-fixed) for the
 bug that made the endpoint reject every token until 2026-11-14, and the rest of what it
 still exposes.

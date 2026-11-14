@@ -1,5 +1,12 @@
 import { callGod } from './god.js'
 
+// The dashboard each community_members role opens, and nothing else.
+const DASHBOARDS = {
+  admin: '/admin-dashboard',
+  leader: '/leader-dashboard',
+  member: '/member-dashboard',
+}
+
 // Page fetches for the community area. One file per area lives in this folder.
 export class CommunityFetch {
   /*
@@ -29,5 +36,20 @@ export class CommunityFetch {
       role: 'admin',
     })
     return community
+  }
+
+  /*
+    Where this person's dashboard for a community lives. The role comes from
+    community_members for that (email, community_id) pair, and /api/god answers with the
+    address on the caller's own id token rather than the one passed in, so a browser
+    cannot ask its way into a higher dashboard. Returns the route it navigated to, or
+    null when the address is not a member of that community at all.
+  */
+  async navigateTo(community_id, email, navigate) {
+    const link = await callGod('member', { function: 'find', community_id, email })
+    const route = DASHBOARDS[link?.role]
+    if (!route) return null
+    navigate(route)
+    return route
   }
 }

@@ -66,6 +66,11 @@ export class God {
         // Community only, and keyed by email rather than the action's own id.
         if (data.email === undefined) throw badRequest("params.email is required for 'memberOf'")
         return client.memberOf(data.email)
+      case 'members':
+        // Community only too: the roster of one community_id, no email of its own.
+        if (data.community_id === undefined)
+          throw badRequest("params.community_id is required for 'members'")
+        return client.members(data.community_id)
       case 'find':
         return client.find(...ids())
       case 'update':
@@ -148,14 +153,20 @@ async function verifiedEmail(token) {
 // What a signed-in browser may do without the server key: only its own user row,
 // and only the communities its own email belongs to. Opening a community is allowed
 // because the guard below pairs it with joining that new community as its first member.
+// The roster, the community row and its join code are on the list too, but they describe
+// other people, so #requireAdmin answers them only for an admin of that community.
 const SELF_ACTIONS = {
   user: ['find', 'create', 'update'],
-  community: ['memberOf', 'create'],
-  member: ['create'],
+  community: ['memberOf', 'create', 'find', 'update'],
+  member: ['create', 'find', 'members'],
 }
 // email is the primary key of users, so a browser must never move a row onto
-// someone else's address; everything except these two columns is dropped.
-const SELF_FIELDS = { user: ['name', 'surname'] }
+// someone else's address; everything except these two columns is dropped. The only
+// column of community an admin may change by hand is the code people type to join.
+const SELF_FIELDS = { user: ['name', 'surname'], community: ['join_id'] }
+// The generated code is six uppercase hex characters, so a hand-written one is held to
+// the same shape: short enough to say aloud, no separators, no case ambiguity.
+const JOIN_CODE = /^[A-Z0-9]{6}$/
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -190,6 +201,27 @@ export default async function handler(req, res) {
         .json({ error: 'a signed-in browser may only touch its own user row and communities' })
     }
     params = { ...params, email }
+    /*
+      These read or change what a community looks like to other people: its roster, its
+      own row, its join code. The caller's community_members row for that community_id
+      settles it, taken from the token rather than the body, so an admin of one group
+      cannot reach into another and a plain member cannot rename the group.
+    */
+    const links = new CommunityMember(god.url, god.key)
+    const needsAdmin =
+      (action === 'member' && params.function === 'members') ||
+      (action === 'community' && ['find', 'update'].includes(params.function))
+    if (needsAdmin) {
+      if (!params.community_id) {
+        return res.status(400).json({ error: 'params.community_id is required for that request' })
+      }
+      const link = await links.find(email, params.community_id)
+      if (link?.role !== 'admin') {
+        return res
+          .status(403)
+          .json({ error: 'only an admin of that community can read its members or change its code' })
+      }
+    }
     if (params.function === 'update') {
       const allowed = SELF_FIELDS[action] ?? []
       const changes = Object.fromEntries(
@@ -199,6 +231,13 @@ export default async function handler(req, res) {
         return res
           .status(400)
           .json({ error: `params.changes must hold at least one of ${allowed.join(', ')}` })
+      }
+      // A hand-written join code is held to the shape of a generated one.
+      if (changes.join_id !== undefined) {
+        changes.join_id = String(changes.join_id).toUpperCase()
+        if (!JOIN_CODE.test(changes.join_id)) {
+          return res.status(400).json({ error: 'join_id must be six characters, A-Z or 0-9' })
+        }
       }
       params = { ...params, changes }
     }
@@ -219,10 +258,8 @@ export default async function handler(req, res) {
       if (!params.community_id) {
         return res.status(400).json({ error: 'params.community_id is required to join a community' })
       }
-      const links = await new CommunityMember(god.url, god.key).all({
-        community_id: params.community_id,
-      })
-      if (links.length) {
+      const everyone = await links.all({ community_id: params.community_id })
+      if (everyone.length) {
         return res
           .status(403)
           .json({ error: 'that community already has members, so only the server key can add one' })

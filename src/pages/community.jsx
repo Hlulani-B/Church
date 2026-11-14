@@ -45,8 +45,11 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au h3{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:44px 0 16px;font-weight:600}
 .au .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
 .au .card{border:1px solid var(--line);border-radius:2px;padding:24px;background:#fff}
-.au .card h4{font-size:20px;margin:0 0 6px;font-weight:500}
-.au .card p{margin:0;color:var(--muted);font-size:14px}
+.au button.card{display:block;width:100%;text-align:left;font-family:inherit;cursor:pointer;color:var(--text)}
+.au button.card:hover{border-color:#111}
+.au button.card:focus-visible{outline:2px solid #111;outline-offset:2px}
+.au .card .title{display:block;font-size:20px;margin:0 0 6px;font-weight:500}
+.au .card .cap{display:block;color:var(--muted);font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:600}
 
 /* create community popup */
 .au .veil{position:fixed;inset:0;background:rgba(20,20,20,.5);display:flex;align-items:center;justify-content:center;padding:24px;z-index:20}
@@ -98,7 +101,9 @@ export default function CommunityPage() {
     try {
       const created = await communities.createCommunity(name);
       closePopup();
-      setNote(`“${created.name}” is open, and you are its admin.`);
+      setNote(
+        `“${created.name}” is open, you are its admin, and its join code is ${created.join_id}.`,
+      );
     } catch (error) {
       setPopupError(error.message);
       return;
@@ -106,6 +111,16 @@ export default function CommunityPage() {
       setSaving(false);
     }
     communities.getCommunities().then(setMine).catch((error) => setNote(error.message));
+  }
+
+  async function openDashboard(one) {
+    try {
+      if (!(await communities.navigateTo(one.community_id, signedIn.email, navigate))) {
+        setNote(`You are not a member of ${one.name}, so there is no dashboard to open.`);
+      }
+    } catch (error) {
+      setNote(error.message);
+    }
   }
 
   useEffect(() => {
@@ -187,10 +202,10 @@ export default function CommunityPage() {
         {mine.length ? (
           <div className="cards">
             {mine.map((one) => (
-              <div className="card" key={one.community_id}>
-                <h4 className="serif">{one.name}</h4>
-                <p>Community ID {one.community_id}</p>
-              </div>
+              <button className="card" type="button" key={one.community_id} onClick={() => openDashboard(one)}>
+                <span className="title serif">{one.name}</span>
+                <span className="cap">Open</span>
+              </button>
             ))}
           </div>
         ) : (

@@ -6,16 +6,17 @@ were made to the live database during the audit.
 
 | # | Finding | Severity | Fix |
 | --- | --- | --- | --- |
-| 1 | Attendance and testimony data is world-readable and world-writable | Critical | Enable RLS on both tables |
+| 1 | Attendance and testimony data is world-readable and world-writable | Critical | Enable RLS on both tables — **done, and it emptied `/admin-testimonies`** |
 | 2 | `event` queries silently truncate at 1000 rows | Major | Add pagination |
 | 3 | A check-in session cannot be opened | Major | Drop the `ended_at` not-null |
 | 4 | A session with attendance rows cannot be deleted | Minor | Add an FK action |
 | 5 | Service-role key was disclosed in plaintext | Major | Rotate it |
 | 6 | Data-access classes are inconsistent about environment and guards | Minor | Shared client and guards |
 | 7 | `/api/god` rejected every genuine Firebase id token | Critical | Parse only the two JSON segments |
+| 8 | An admin screen could show another community's roster | Major | Tag every read with the community that answered |
 
-Findings 1 to 6 are the 2026-11-13 data-layer audit. Finding 7 is the sign-in path and
-was found on 2026-11-14; it is marked **[Fixed]** below.
+Findings 1 to 6 are the 2026-11-13 data-layer audit. Findings 7 and 8 are the sign-in path
+and the admin screens, both found on 2026-11-14; 7 is marked **[Fixed]** below.
 
 ## 1. Attendance and testimony data is world-readable and world-writable
 
@@ -51,6 +52,22 @@ Do that first, then decide where permissions are enforced. Note the constraint i
 [Authentication](authentication.md): a Firebase identity is invisible to Supabase
 row level security, so per-user policies are not available to you today unless the
 requests carry a Supabase session token.
+
+**Changed 2026-11-14.** `/admin-testimonies` reads that table from the browser itself, on
+`VITE_SUPABASE_ANON_KEY` — the key this finding is about — rather than through `/api/god`.
+So a visitor no longer has to write the request by hand: the app puts the key in their
+bundle and makes the call for them. `event` is not read this way, because the attendance
+page needs the names in `users`, and a browser on the anon key cannot see them.
+
+**Measured again on 2026-11-14, and it is still open.** That key now answers 466 `testimony`
+rows and 4650 `event` rows with no filter of any kind, while `users`, `community`,
+`community_members` and `session` answer it with nothing at all — the four tables that were
+protected still are. `src/page_functions/testimonies.js` runs on exactly this key, so the
+export it writes is a browser read of a table anybody can read — and since the page gained an
+add button, so is the write: an `insert` and a `delete` on `testimony` were both accepted by
+this key while checking that button. It is also why the names in an
+export cannot come from that read: a join to `users` on the anon key answers zero rows, so the
+names are asked for separately through `admin` `roster` on `/api/god`.
 
 ## 2. `event` queries silently truncate at 1000 rows
 
@@ -96,15 +113,19 @@ browser, so a service-role key must never use it.
 
 ## 6. Data-access class inconsistencies
 
-Six classes now cover the schema, all under `src/functions/`. Three differences showed
+Five table classes covered the schema under `src/functions/` when this was written, next to
+`admin_dashboard.js` and, since 2026-11-14, `attendance.js` for the reads that belong to a
+screen rather than to a row. `testimony.js` is gone: the testimonies page reads that table
+from the browser, so nothing on the server builds it any more. Three differences showed
 up while testing them:
 
-- `Event` and `Testimony` read `import.meta.env` only, so `new Event()` throws in
-  `api/`; they need the url and key passed explicitly there.
-- `User` has no primary-key guard, unlike the other five. It is harmless, because
+- `Event` reads `import.meta.env` only, so `new Event()` throws in
+  `api/`; they need the url and key passed explicitly there. (`Testimony` did the same, and
+  left with the class.)
+- `User` has no primary-key guard, unlike the others. It is harmless, because
   `email=eq.undefined` matches no row, but it is the odd one out.
-- All six repeat the same three-line constructor. Worth one shared client module
-  now that there are six.
+- They all repeat the same three-line constructor. Worth one shared client module
+  now that there are seven.
 
 ## 7. `/api/god` rejected every genuine Firebase id token — **[Fixed]**
 
@@ -164,6 +185,46 @@ wrong.
 **General lesson.** `const [a, b] = array.map(fn)` runs `fn` over the whole array. If
 `fn` throws on the tail, destructuring does not save you. Use `array.slice(0, 2).map(fn)`,
 and never collapse a validation function's failure modes into a bare `catch { return null }`.
+
+## 8. An admin screen could show another community's roster
+
+Reported 2026-11-14 as "members from community A show in community B". The queries were
+not at fault. Measured against the live project with the same `admin` `roster` call the
+dashboard makes:
+
+| Community | Links in `community_members` | Rows the roster returned | Addresses shared with the other community |
+| --- | --- | --- | --- |
+| Kopano Youth Fellowship `11111111-…` | 50 | 50 | 1 — your own address, which is admin of both |
+| UBF `5eb210c3-…` | 16 | 16 | |
+
+`roster` filters `.eq('community_id', …)`, `attendance.services` and `attendance.service`
+filter it too, and the testimonies read does as well — A answers with `@example.com`
+people and B with `@mock.kopano`, 19 gatherings against 66. Nothing on the server mixes
+them.
+
+**What did mix was the screen.** Each admin page held its last answer in React state with
+no record of which community it was read for. Two `/admin-dashboard` history entries —
+click A's card, then B's, then press the browser's back button — change the community
+under a page that is still mounted, so B's heading sat over A's 50 rows until A's own read
+happened to answer. The same thing happens whenever an earlier response lands last, which
+is ordinary on a slow link: the page had no way to notice it was showing an answer to a
+question it no longer asks. The roster, the community row, the gathering list, the opened
+gathering and the testimonies page were all exposed.
+
+`rememberAdmin` made a second one possible: filling the community name field by field could
+put A's name on B's id when a link carried only an id, which is exactly the older history
+entries written before the state grew a name.
+
+**Fix.** An answer now carries the id it was read for, and a screen renders only an answer
+whose tag matches the community on screen — `shown`, `rows`, `list`, `chosen`, `gathering`
+and `page` are all derived that way in `src/admin/`. A mismatch shows the loading line,
+never the wrong people. `adminState` no longer fills the name from a source that is
+talking about another community, so a heading cannot borrow one, and the testimonies page
+offset belongs to the community it was walked through instead of carrying over.
+
+**Lesson, for the next read added here.** A page whose subject can change underneath it
+must tag what it holds with that subject. Passing the id into the query is necessary and
+not enough; the state on the other side of the promise needs it too.
 
 ## How this was tested
 

@@ -51,6 +51,27 @@ export class Community {
     return data
   }
 
+  // Every community a person belongs to: their ids out of community_members,
+  // then the names from this table. Returns [{ community_id, name }].
+  async memberOf(email) {
+    if (!email) throw new Error('email is required')
+    const { data: links, error: linksError } = await this.client
+      .from('community_members')
+      .select('community_id')
+      .eq('email', email)
+    if (linksError) throw linksError
+
+    const ids = links.map(({ community_id }) => community_id)
+    if (!ids.length) return []
+
+    const { data, error } = await this.client
+      .from(TABLE)
+      .select('community_id, name')
+      .in('community_id', ids)
+    if (error) throw error
+    return data
+  }
+
   async remove(community_id) {
     this.#id(community_id)
     const { data, error } = await this.client

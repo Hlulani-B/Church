@@ -16,3 +16,5 @@ nav:
   - Home: index.md
   - User Stories: user-stories.md
   - Database: database.md
+  - Authentication: authentication.md
+  - Findings: findings.md

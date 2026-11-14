@@ -99,3 +99,12 @@ alter table session enable row level security;
   policies need to be added before they can be read or written.
 - `event` and `testimony` have RLS left off, which means any authenticated
   request can read and write them.
+- A person's communities take two reads, because `community_members` holds only the
+  ids: `Community.memberOf(email)` collects the `community_id`s for that address, then
+  selects `community_id, name` from `community` with `.in(...)`. It returns `[]` for
+  someone with no links, and is reached from the browser through
+  `CommunityFetch.getCommunities()` in `src/page_functions/community.js`.
+- Reads of `users`, `community` and `community_members` only return rows when the query
+  runs on the service-role key. `new User()` defaults to `SUPABASE_ANON_KEY` and gets
+  zero rows back from these RLS-protected tables; `new God()` passes the service key to
+  every class, which is why page data arrives through `/api/god` and not directly.

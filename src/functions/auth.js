@@ -4,7 +4,7 @@ import {
   signInWithEmailAndPassword,
   signOut,
 } from 'firebase/auth'
-import { auth as defaultAuth } from '../firebase.js'
+import { auth as defaultAuth, ready } from '../firebase.js'
 
 function view(user) {
   if (!user) return null
@@ -40,8 +40,22 @@ export class Auth {
     return view(this.auth.currentUser)
   }
 
+  /*
+    The listener is only attached once the storage choice in src/firebase.js has
+    settled, so a slow IndexedDB read cannot arrive as null and bounce a signed-in
+    visitor to /login. The first callback is therefore always the settled state.
+  */
   onChange(listener) {
-    return onAuthStateChanged(this.auth, (user) => listener(view(user)))
+    let stop = null
+    let cancelled = false
+    ready.then(() => {
+      if (cancelled) return
+      stop = onAuthStateChanged(this.auth, (user) => listener(view(user)))
+    })
+    return () => {
+      cancelled = true
+      if (stop) stop()
+    }
   }
 
   async idToken(forceRefresh = false) {

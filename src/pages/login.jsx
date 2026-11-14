@@ -1,22 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { initializeApp, getApps, getApp } from "firebase/app";
-import {
-  getAuth,
-  GoogleAuthProvider,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-} from "firebase/auth";
+import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
+import { auth } from "../firebase.js";
+import { Auth } from "../functions/auth.js";
 
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-};
-
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-const auth = getAuth(app);
+const accounts = new Auth();
 const googleProvider = new GoogleAuthProvider();
 
 const EMAIL_KEY = "kopano_email";
@@ -110,6 +98,14 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [suggestSignup, setSuggestSignup] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // A held session means you are already inside: opening /login should not ask again.
+  // Through Auth.onChange, so it waits for storage the same way every other page does.
+  useEffect(() => {
+    return accounts.onChange((user) => {
+      if (user) navigate("/community", { replace: true });
+    });
+  }, [navigate]);
 
   function goHome() {
     navigate("/community");

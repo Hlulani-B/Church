@@ -46,8 +46,7 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
 .au .card{border:1px solid var(--line);border-radius:2px;padding:24px;background:#fff}
 .au .card h4{font-size:20px;margin:0 0 6px;font-weight:500}
-.au .card p{margin:0 0 16px;color:var(--muted);font-size:14px}
-.au .badge{display:inline-block;border:1px solid #111;padding:2px 10px;font-size:12px;font-weight:600}
+.au .card p{margin:0;color:var(--muted);font-size:14px}
 
 @media (max-width:860px){
   .au .bar{padding:14px 20px}

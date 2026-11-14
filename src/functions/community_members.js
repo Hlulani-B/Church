@@ -23,29 +23,6 @@ export class CommunityMember {
     return data
   }
 
-  /*
-    Everyone in one community, with the name from users beside the role. `users!inner` is
-    the join: community_members holds only the email and the role, users holds who that
-    address belongs to, and the inner form drops a link whose user row is missing instead
-    of returning a row with no name. Flattened here so a page gets one object per person.
-  */
-  async members(community_id) {
-    if (!community_id) throw new Error('community_id is required')
-    const { data, error } = await this.client
-      .from(TABLE)
-      .select('email, role, users!inner(name, surname)')
-      .eq('community_id', community_id)
-      .order('role')
-      .order('email')
-    if (error) throw error
-    return data.map(({ email, role, users }) => ({
-      email,
-      role,
-      name: users?.name ?? '',
-      surname: users?.surname ?? '',
-    }))
-  }
-
   async all({ email, community_id, role } = {}) {
     let query = this.client.from(TABLE).select()
     if (email) query = query.eq('email', email)

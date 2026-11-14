@@ -3,6 +3,7 @@ import { createPublicKey, timingSafeEqual, verify } from 'node:crypto'
 import { User } from '../src/functions/user.js'
 import { Community } from '../src/functions/community.js'
 import { CommunityMember } from '../src/functions/community_members.js'
+import { AdminDashboard } from '../src/functions/admin_dashboard.js'
 import { Event } from '../src/functions/event.js'
 import { Session } from '../src/functions/session.js'
 import { Testimony } from '../src/functions/testimony.js'
@@ -32,6 +33,9 @@ export class God {
         return { class: Community, keys: ['community_id'] }
       case 'member':
         return { class: CommunityMember, keys: ['email', 'community_id'] }
+      case 'admin':
+        // Not a table: what the admin dashboard needs, which spans two of them.
+        return { class: AdminDashboard, keys: ['community_id'] }
       case 'event':
         return { class: Event, keys: ['event_id'] }
       case 'session':
@@ -66,11 +70,11 @@ export class God {
         // Community only, and keyed by email rather than the action's own id.
         if (data.email === undefined) throw badRequest("params.email is required for 'memberOf'")
         return client.memberOf(data.email)
-      case 'members':
-        // Community only too: the roster of one community_id, no email of its own.
+      case 'roster':
+        // The admin dashboard only: one community_id, no email of its own.
         if (data.community_id === undefined)
-          throw badRequest("params.community_id is required for 'members'")
-        return client.members(data.community_id)
+          throw badRequest("params.community_id is required for 'roster'")
+        return client.roster(data.community_id)
       case 'find':
         return client.find(...ids())
       case 'update':
@@ -155,12 +159,13 @@ async function verifiedEmail(token) {
 // What a signed-in browser may do without the server key: only its own user row,
 // and only the communities its own email belongs to. Opening a community is allowed
 // because the guard below pairs it with joining that new community as its first member.
-// The roster, the community row and its join code are on the list too, but they describe
-// other people, so the admin check below answers them only for an admin of that community.
+// Everything under 'admin' describes other people — the roster, the join code — so the
+// admin check answers those only for an admin of the community_id in the request.
 const SELF_ACTIONS = {
   user: ['find', 'create', 'update'],
-  community: ['memberOf', 'create', 'find', 'changeCode'],
-  member: ['create', 'find', 'members', 'remove'],
+  community: ['memberOf', 'create', 'find'],
+  member: ['create', 'find', 'remove'],
+  admin: ['roster', 'changeCode'],
 }
 // email is the primary key of users, so a browser must never move a row onto
 // someone else's address; everything except these two columns is dropped. community has
@@ -202,15 +207,16 @@ export default async function handler(req, res) {
     }
     params = { ...params, email }
     /*
-      These read or change what a community looks like to other people: its roster, its
-      own row, its join code, and who is in it. The caller's community_members row for
-      that community_id settles it, taken from the token rather than the body, so an admin
-      of one group cannot reach into another and a plain member cannot rename the group.
+      These read or change what a community looks like to other people: who is in it, its
+      join code, its own row. The caller's community_members row for that community_id
+      settles it, taken from the token rather than the body, so an admin of one group
+      cannot reach into another and a plain member cannot rename the group.
     */
     const links = new CommunityMember(god.url, god.key)
     const needsAdmin =
-      (action === 'member' && ['members', 'remove'].includes(params.function)) ||
-      (action === 'community' && ['find', 'changeCode'].includes(params.function))
+      action === 'admin' ||
+      (action === 'member' && params.function === 'remove') ||
+      (action === 'community' && params.function === 'find')
     if (needsAdmin) {
       if (!params.community_id) {
         return res.status(400).json({ error: 'params.community_id is required for that request' })

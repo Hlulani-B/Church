@@ -62,7 +62,7 @@ role — `admin` to `/admin-dashboard`, `leader` to `/leader-dashboard`, `member
 dashboard reads that id and does nothing else with it: `AdminDashboardFetch` in
 `src/page_functions/admin_dashboard.js` answers the roster with `getMembers(community_id)`
 and the name and code with `getCommunity(community_id)`, and `changeJoinCode(community_id)`
-asks `/api/god` `community` `changeCode` for a brand new code — the button on the page is
+asks `/api/god` `admin` `changeCode` for a brand new code — the button on the page is
 the only way to change it, there is no field to type into. Every roster row carries a ⋮
 menu with **Remove member**, and `removeMember(community_id, email)` unlinks that address
 from this community and then draws a new code in the same action, so a removal cannot
@@ -115,34 +115,40 @@ caller's Firebase ID token from `getIdToken(auth.currentUser)` and posts it to `
 where `God.call()` runs on the server. A new page read is a new method in the matching
 `src/page_functions/` file, never a raw fetch written inside a page. That token is what
 `api/god.js` verifies. A browser token is held to `SELF_ACTIONS` — `user` `find`, `create`
-and `update`, `community` `memberOf`, `create`, `find` and `changeCode`, and `member`
-`find`, `create`, `members` and `remove` — and the email is taken from the token rather
-than the body, so a member can only ever list the communities they belong to and read the
-role they hold in one.
+and `update`, `community` `memberOf`, `create` and `find`, `member` `find`, `create` and
+`remove`, and the whole of `admin` — and the email is taken from the token rather than the
+body, so a member can only ever list the communities they belong to and read the role they
+hold in one.
 `member` `create` is checked further: the server reads `community_members` for that
 `community_id` and refuses the write once the group has any members, and it overwrites
 `role` with `admin`, so a browser can attach itself only to a community it has just opened,
-never into an existing one where it would take over other people's attendance. Four of
-those actions describe other people rather than the caller — the `members` roster,
-`community` `find`, `community` `changeCode` and `member` `remove` — so the server looks up
-the role the caller's own token address holds in that `community_id` and answers `403`
-unless it is `admin`. The lookup cannot be argued with: `params.email` is overwritten with
-the token address before it happens, and those requests take a `community_id` rather than an
-email anyway.
+never into an existing one where it would take over other people's attendance.
 
-Removing somebody is the one browser action that names another person, so the target arrives
-as `params.member_email` and only becomes `params.email` — what `CommunityMember.remove`
-deletes on — after the caller has been shown to be an admin of that community. Three things
-sit between the two: an address with no link in that community is a `400` rather than a
-silent no-op, one admin cannot delete another's row, and the last member cannot be removed
-at all. The second is what stops any admin from emptying a group of its managers; the third
-is what keeps the `member` `create` check honest, since that only refuses a browser once a
-community has members, and a community drained to zero would be waiting for whoever guessed
-its id to join it as admin. For `update`, `SELF_FIELDS` keeps only `name` and `surname` on a
-user and drops every other key from
+`admin` is the action that does not name a table. Every class in `src/functions/` is one
+table's record — `user.js`, `community.js`, `community_members.js` — and `God.#case` maps an
+action onto one of them, so the two reads that belong to a screen rather than to a row get
+their own class in `src/functions/admin_dashboard.js`: `roster`, which joins
+`community_members` onto `users` for one `community_id`, and `changeCode`, which draws a join
+code and writes it. Nothing about either describes the caller, so the whole action is
+admin-gated, along with the two table reads that also speak about other people — `community`
+`find` and `member` `remove`. The server looks up the role the caller's own token address
+holds in that `community_id` and answers `403` unless it is `admin`. The lookup cannot be
+argued with: `params.email` is overwritten with the token address before it happens, and
+those requests take a `community_id` rather than an email anyway.
+
+Removing somebody is the one table-level action that names another person, so the target
+arrives as `params.member_email` and only becomes `params.email` — what
+`CommunityMember.remove` deletes on — after the caller has been shown to be an admin of that
+community. Three things sit between the two: an address with no link in that community is a
+`400` rather than a silent no-op, one admin cannot delete another's row, and the last member
+cannot be removed at all. The second is what stops any admin from emptying a group of its
+managers; the third is what keeps the `member` `create` check honest, since that only refuses
+a browser once a community has members, and a community drained to zero would be waiting for
+whoever guessed its id to join it as admin. For `update`, `SELF_FIELDS` keeps only `name` and
+`surname` on a user and drops every other key from
 `changes`, so the allowlist lives on the server and not in the form. `community` has no
 entry there because **a join code is never read off a request**: `changeCode` draws one on
-the server with `generateJoinId()` in `src/functions/community.js`, and writing a code
+the server with `generateJoinId()` in `src/functions/admin_dashboard.js`, and writing a code
 somebody typed by hand needs `GOD_SERVER_KEY`. Anything outside all of this needs
 `GOD_SERVER_KEY` too. See
 [Finding 7](findings.md#7-apigod-rejected-every-genuine-firebase-id-token-fixed) for the

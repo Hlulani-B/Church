@@ -5,13 +5,13 @@ import { callGod } from './god.js'
 
 export class AdminDashboardFetch {
   /*
-    God's `member` `members`, which joins community_members to users for one community
-    and answers [{ email, name, surname, role }] — admins first, then leaders, then
-    members. /api/god only answers this for an admin of that community, and it reads the
-    caller's role off the id token rather than anything in this request.
+    God's `admin` `roster`, which joins community_members to users for one community and
+    answers [{ email, name, surname, role }] — admins first, then leaders, then members.
+    /api/god only answers this for an admin of that community, and it reads the caller's
+    role off the id token rather than anything in this request.
   */
   async getMembers(community_id) {
-    return callGod('member', { function: 'members', community_id })
+    return callGod('admin', { function: 'roster', community_id })
   }
 
   /*
@@ -36,7 +36,7 @@ export class AdminDashboardFetch {
   */
   async removeMember(community_id, email) {
     await callGod('member', { function: 'remove', community_id, member_email: email })
-    return callGod('community', { function: 'changeCode', community_id })
+    return callGod('admin', { function: 'changeCode', community_id })
   }
 
   /*
@@ -47,7 +47,7 @@ export class AdminDashboardFetch {
     the code has changed.
   */
   async changeJoinCode(community_id) {
-    return callGod('community', { function: 'changeCode', community_id })
+    return callGod('admin', { function: 'changeCode', community_id })
   }
 
   /*

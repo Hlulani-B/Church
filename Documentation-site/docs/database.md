@@ -108,8 +108,8 @@ alter table session enable row level security;
   the name only and reads the row back, so the code arrives in the same response that
   created the community.
 - Changing that code later is the app's job, because a code somebody reads aloud has to
-  avoid the characters that look alike. `Community.changeCode(community_id)` in
-  `src/functions/community.js` draws six characters from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`
+  avoid the characters that look alike. `AdminDashboard.changeCode(community_id)` in
+  `src/functions/admin_dashboard.js` draws six characters from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`
   with `crypto.getRandomValues` — no `0`, `O`, `1` or `I` — asks the table whether any
   community already holds that code, draws again until one is free, then writes it and
   returns the row. It gives up after ten draws rather than spinning forever.
@@ -134,7 +134,7 @@ alter table session enable row level security;
   policies need to be added before they can be read or written.
 - `event` and `testimony` have RLS left off, which means any authenticated
   request can read and write them.
-- The roster of a community is one read, not two: `CommunityMember.members(community_id)`
+- The roster of a community is one read, not two: `AdminDashboard.roster(community_id)`
   selects `email, role, users!inner(name, surname)` from `community_members` and lets
   Postgres do the join on `users(email)`. `!inner` is what makes it an inner join — a link
   whose `users` row is missing drops out instead of coming back nameless — and the class

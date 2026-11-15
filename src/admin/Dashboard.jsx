@@ -4,6 +4,7 @@ import { Auth } from "../functions/auth.js";
 import { AdminDashboardFetch, ROLES } from "../page_functions/admin_dashboard.js";
 import AdminMenu from "./menu.jsx";
 import BackToCommunities from "../components/back.jsx";
+import CheckIn from "../components/checkin.jsx";
 import { adminState, rememberAdmin } from "./state.js";
 
 const accounts = new Auth();
@@ -622,6 +623,8 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* An admin is stood in the room too, and is not always the one who opened the session. */}
+        {communityId && <CheckIn community_id={communityId} email={admin.email} />}
       </main>
 
       {target && (

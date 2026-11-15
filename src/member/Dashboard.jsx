@@ -4,6 +4,7 @@ import { Auth } from "../functions/auth.js";
 import { AttendanceFetch, REASONS } from "../page_functions/attendance.js";
 import Menu from "../components/menu.jsx";
 import BackToCommunities from "../components/back.jsx";
+import CheckIn from "../components/checkin.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
 const accounts = new Auth();
@@ -38,8 +39,9 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au .note{background:#f4f4f4;border-left:3px solid #111;padding:12px 16px;font-size:14px;margin:22px 0 0}
 .au .note.bad{border-left-color:#a11111}
 
-/* The one write a member has: a day, a gathering, a reason. It is kept grey against the
-   white page because it is a notice, not a record of anything that already happened. */
+/* One of the two writes a member has: a day, a gathering, a reason. It is kept grey against the
+   white page because it is a notice, not a record of anything that already happened — the box
+   below it does write a record, and is dark for the same reason. */
 .au .absent{border:1px solid var(--line);border-radius:2px;padding:20px 22px;margin:34px 0 0;background:#fafafa}
 .au .absent .what{font-family:"Playfair Display",Georgia,"Times New Roman",serif;font-size:21px;font-weight:500;margin:0}
 .au .absent .why{color:var(--muted);font-size:14px;margin:8px 0 0}
@@ -85,8 +87,8 @@ export default function MemberDashboard() {
   const [noSession, setNoSession] = useState(false);
   /*
     The notice: a day, a gathering, a reason. Whether the person came is not one of the boxes —
-    a member cannot mark anybody present, including themselves, and /api/god writes the answer
-    as not attending whoever the form says.
+    this form only ever writes not attending, to whoever it says, and the presence a member can
+    claim is the PIN box below it, which speaks for this sign-in and nobody else's.
   */
   const [absence, setAbsence] = useState({ date: today(), name: "", reason: "" });
   const [saving, setSaving] = useState(false);
@@ -200,8 +202,8 @@ export default function MemberDashboard() {
 
         {!communityId ? (
           <div className="note">
-            No community was chosen, so there is nothing to open here. Go back, click a
-            community, and its notice box and its testimonies open on these pages.
+            No community was chosen, so there is nothing to open here. Go back, click a community,
+            and its notice box, its check-in and its testimonies open on these pages.
           </div>
         ) : (
           <form className="absent" onSubmit={recordAbsence}>
@@ -209,9 +211,9 @@ export default function MemberDashboard() {
             <p className="why">
               Record that you will not be at a gathering, including one whose day has not come
               yet. A reason is optional, and when you give one it is in your own words — the box
-              offers the usual five, and takes anything you type. This is your own notice: a
-              member marks nothing present, and a gathering you are recorded as being at keeps
-              that record.
+              offers the usual five, and takes anything you type. This is your own notice: coming
+              is said with the four digits below rather than here, and a gathering you are
+              recorded as being at keeps that record.
             </p>
             <div className="fields">
               <label>
@@ -259,6 +261,8 @@ export default function MemberDashboard() {
             {note && !noticeError && <div className="note">{note}</div>}
           </form>
         )}
+
+        {communityId && <CheckIn community_id={communityId} email={admin.email} />}
       </main>
     </div>
   );

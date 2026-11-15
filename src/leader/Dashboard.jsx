@@ -4,6 +4,7 @@ import { Auth } from "../functions/auth.js";
 import { AdminDashboardFetch } from "../page_functions/admin_dashboard.js";
 import LeaderMenu from "./menu.jsx";
 import BackToCommunities from "../components/back.jsx";
+import CheckIn from "../components/checkin.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
 const accounts = new Auth();
@@ -336,6 +337,8 @@ export default function LeaderDashboard() {
           </section>
         )}
 
+        {/* A leader is stood in the room too, and is not always the one who opened the session. */}
+        {communityId && <CheckIn community_id={communityId} email={admin.email} />}
       </main>
     </div>
   );

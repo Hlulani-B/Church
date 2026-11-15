@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
 import { SessionFetch } from "../page_functions/session.js";
+import { NO_PLACE, clock, readPosition } from "../page_functions/place.js";
 import { adminState } from "../admin/state.js";
 import Menu from "../components/menu.jsx";
 import BackToCommunities from "../components/back.jsx";
@@ -60,6 +61,14 @@ html,body{margin:0;padding:0;background:#000;display:block;min-width:0}
 .ta .place .read.waiting{color:var(--muted)}
 .ta .fine{font-size:13px;color:var(--muted);margin:14px 0 0;max-width:560px}
 
+.ta .near{display:flex;align-items:flex-end;gap:26px;flex-wrap:wrap}
+.ta .near .field{max-width:190px;margin:0}
+.ta .field.dim{opacity:.45}
+/* The checkbox is a sentence, not a column heading, so it opts out of the labels above it and
+   of the full-width box every other input on this page is given. */
+.ta .check{display:flex;align-items:center;gap:9px;margin:0 0 12px;font-size:14px;font-weight:400;letter-spacing:normal;text-transform:none;color:#fff;cursor:pointer}
+.ta .check input{width:auto;margin:0;accent-color:#fff}
+
 
 @media (max-width:860px){
   .ta .bar{padding:14px 20px}
@@ -69,66 +78,6 @@ html,body{margin:0;padding:0;background:#000;display:block;min-width:0}
   .ta .place .read{min-width:0;flex:1 1 100%}
 }
 `;
-
-function clock(value) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-// Six places keeps the reading to about the width of one metre, which is nowhere near the
-// accuracy a phone reports anyway, and a longer string is only more to read out or compare.
-function fix(number) {
-  return Number(number.toFixed(6));
-}
-
-// Why the device would not answer, in the words the person has to act on.
-function refusal(cause) {
-  if (cause?.code === 1) {
-    return "This browser would not give leave to read where it is. Allow location for this page, then ask again.";
-  }
-  if (cause?.code === 2) {
-    return "Nothing around this device could tell it where it is. Check that location is switched on, then ask again.";
-  }
-  if (cause?.code === 3) {
-    return "That took too long to answer. Ask again — a moment outdoors, or beside a window, is usually enough.";
-  }
-  return "This device would not say where it is. Ask again before opening the session.";
-}
-
-const NO_PLACE = { state: "idle", latitude: null, longitude: null, accuracy: null, message: "" };
-
-/*
-  One reading of where this device stands, straight into the page's state. It is asked for on
-  arrival because a leader opens a session in the room, standing where the room is; the numbers
-  it comes back with are what the session row will carry, and what every later check-in is
-  measured against. Nothing here is remembered between visits: a place held in storage would be
-  a place claimed for a room the phone has since left.
-*/
-function readPosition(setPlace) {
-  if (!("geolocation" in navigator)) {
-    setPlace({
-      ...NO_PLACE,
-      state: "refused",
-      message: "This browser cannot report a location at all, so no session can be opened from it.",
-    });
-    return;
-  }
-  setPlace({ ...NO_PLACE, state: "asking" });
-  navigator.geolocation.getCurrentPosition(
-    (found) =>
-      setPlace({
-        state: "held",
-        latitude: fix(found.coords.latitude),
-        longitude: fix(found.coords.longitude),
-        accuracy: Math.round(found.coords.accuracy),
-        message: "",
-      }),
-    (cause) => setPlace({ ...NO_PLACE, state: "refused", message: refusal(cause) }),
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
-  );
-}
 
 export default function TakeAttendancePage() {
   /*
@@ -145,6 +94,16 @@ export default function TakeAttendancePage() {
   const [started, setStarted] = useState("");
   const [ended, setEnded] = useState("");
   const [place, setPlace] = useState(NO_PLACE);
+  /*
+    How near the room a check-in has to come from, in metres, and whether that question is asked
+    at all. The number answers a question only somebody standing at the front can see: how well
+    the signal behaves in this particular building. Ignoring it is for a gathering that meets in
+    more than one place at once, and it leaves the four digits as the only thing between a
+    stranger and a present mark — which is why the box says that out loud rather than leaving the
+    default generous.
+  */
+  const [radius, setRadius] = useState("150");
+  const [anywhere, setAnywhere] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [open, setOpen] = useState(null);
@@ -178,10 +137,10 @@ export default function TakeAttendancePage() {
   }
 
   /*
-    What leaves this page is the PIN it was shown, the gathering's name, the two times, which
-    community and the numbers the device reported. It is not asked who was there: /api/god takes
-    the creator's own attendance from the token, and nobody else's from anywhere, so a room full
-    of people is not entered by one leader's keyboard.
+    What leaves this page is the PIN it was shown, the gathering's name, the two times, how near
+    the room a check-in will be taken from, which community and the numbers the device reported.
+    It is not asked who was there: /api/god takes the creator's own attendance from the token, and
+    nobody else's from anywhere, so a room full of people is not entered by one leader's keyboard.
   */
   async function save(event) {
     event.preventDefault();
@@ -192,6 +151,14 @@ export default function TakeAttendancePage() {
     if (!name.trim()) {
       setError(
         "This session has to say which gathering it opens — that name is what every attendance row at it is filed under.",
+      );
+      return;
+    }
+    // A blank would be stored as no limit at all, which is not what an empty box means.
+    const metres = Number(radius)
+    if (!anywhere && !(Number.isFinite(metres) && metres > 0)) {
+      setError(
+        "Say how near the room a check-in has to come from, in metres — or allow check-in from anywhere, if this gathering meets in more than one place.",
       );
       return;
     }
@@ -213,6 +180,8 @@ export default function TakeAttendancePage() {
         ended_at: ended,
         latitude: place.latitude,
         longitude: place.longitude,
+        radius: radius.trim() === "" ? null : metres,
+        allow_any_radius: anywhere,
       });
       setOpen(row);
     } catch (cause) {
@@ -345,13 +314,44 @@ export default function TakeAttendancePage() {
                 closes.
               </p>
 
+              <h3>5 · How near the room</h3>
+              <div className="near">
+                <div className={anywhere ? "field dim" : "field"}>
+                  <label htmlFor="session-radius">Check-ins within</label>
+                  <input
+                    id="session-radius"
+                    type="number"
+                    min="1"
+                    max="20000"
+                    step="10"
+                    value={radius}
+                    onChange={(event) => setRadius(event.target.value)}
+                    disabled={anywhere}
+                  />
+                </div>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={anywhere}
+                    onChange={(event) => setAnywhere(event.target.checked)}
+                  />
+                  Allow check-in from anywhere
+                </label>
+              </div>
+              <p className="fine">
+                {anywhere
+                  ? "Distance is not asked about, so these four digits alone mark anybody present — whoever was told them, in this town or another, is written down as having come. That is right for a gathering meeting in more than one place at once, and for little else."
+                  : "A phone further from this point than the number above is refused, which is the whole answer to a PIN texted to somebody who stayed home. A reading is only as good as the sky a phone can see, so a hall that turns away people standing in it is a hall that wants a larger number here."}
+              </p>
+
               {error && <div className="note bad">{error}</div>}
               {open && (
                 <div className="note">
                   <strong>{open.event_name}</strong> is open for check-in on PIN{" "}
                   <strong>{open.pin}</strong> from {clock(open.started_at)} to{" "}
-                  {clock(open.ended_at)}, recorded at {open.latitude}, {open.longitude}. You are
-                  written down as attending it. Tell the room the PIN, and this page can go.
+                  {clock(open.ended_at)}, taken from within{" "}
+                  {open.allow_any_radius ? "any distance at all" : `${open.radius} m of this point`}.
+                  You are written down as attending it. Tell the room the PIN, and this page can go.
                 </div>
               )}
 

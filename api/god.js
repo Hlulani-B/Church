@@ -6,12 +6,25 @@ import { CommunityMember } from '../src/functions/community_members.js'
 import { AdminDashboard, ROLES } from '../src/functions/admin_dashboard.js'
 import { Attendance } from '../src/functions/attendance.js'
 import { Event } from '../src/functions/event.js'
-import { Session } from '../src/functions/session.js'
+import { Session, distanceInMetres } from '../src/functions/session.js'
 
 function badRequest(message) {
   const error = new Error(message)
   error.status = 400
   return error
+}
+
+/*
+  A coordinate as a device reported it, or NaN.
+
+  `Number(null)` is 0 and `Number('')` is 0, so a bare Number would read a phone that gave no
+  position as a point in the Gulf of Guinea — 4167 km from a room in Johannesburg, and a session
+  opened with no place would be measured from the same water. Every distance test below asks
+  whether the pair is finite, so the empty case has to arrive as NaN rather than as a number that
+  happens to be valid.
+*/
+function reading(value) {
+  return value === null || value === undefined || value === '' ? NaN : Number(value)
 }
 
 // action picks the class, params.function picks the method, the rest of params are its arguments.
@@ -74,6 +87,12 @@ export class God {
         // Session only, and it touches no table: the four digits are drawn for the page to
         // show the room, and travel back in the create that follows.
         return client.pin()
+      case 'open':
+        // Session only, and it writes nothing: what could be checked in to right now, with
+        // neither the PIN nor the place of the session in the answer.
+        if (data.community_id === undefined)
+          throw badRequest("params.community_id is required for 'open'")
+        return client.open(data)
       case 'all':
         return client.all(data)
       case 'memberOf':
@@ -191,12 +210,17 @@ async function verifiedEmail(token) {
 // from the server there, and the community only from the code.
 // Everything under 'admin' and 'attendance' describes other people, so the caller's role in
 // the community_id in the request answers those — an admin for anything that changes them, a
-// leader for reading them. 'event' opens exactly one write, and it is about the caller:
-// recording that they are not attending. 'session' opens the two the take-attendance page
+// leader for reading them. 'event' opens two writes, and both are about the caller: recording
+// that they are not attending, and recording that they are — the second only for as long as a
+// PIN, a window and a distance all agree, which is what the branch below checks rather than
+// anything the page is asked to believe. 'session' opens the two the take-attendance page
 // makes — drawing a PIN, which writes nothing, and the session row that follows, which also
 // records its own creator as present at the gathering they just opened, because whoever runs
 // the check-in is in the room. Both answer to the leader tier, since a session belongs to the
-// running of the room rather than to anybody else's record. Nothing else a browser can ask
+// running of the room rather than to anybody else's record. The third session call, 'open', is
+// a read rather than a write: it answers which gatherings could be checked in to at this
+// moment, so a member's page can show its PIN box only while one of them holds — and it names
+// no PIN, for the reason spelled out where that branch is. Nothing else a browser can ask
 // marks anybody present.
 const SELF_ACTIONS = {
   user: ['find', 'create', 'update'],
@@ -204,8 +228,8 @@ const SELF_ACTIONS = {
   member: ['create', 'find', 'remove'],
   admin: ['roster', 'changeCode', 'assign'],
   attendance: ['services', 'service'],
-  event: ['record'],
-  session: ['create', 'pin'],
+  event: ['record', 'checkin'],
+  session: ['create', 'pin', 'open'],
 }
 // email is the primary key of users, so a browser must never move a row onto
 // someone else's address; everything except these two columns is dropped. community has
@@ -264,10 +288,16 @@ export default async function handler(req, res) {
     const links = new CommunityMember(god.url, god.key)
     // The leader tier is asked first because it is the narrower one: 'admin' roster answers
     // the admin test too, and a read matched on both would be settled as a change.
-    // A session is on this tier because opening one is about a gathering, not about anybody's
-    // record at it, and the leader role exists to run the room.
+    // Opening a session is on this tier because it is about a gathering, not about anybody's
+    // record at it, and the leader role exists to run the room. Reading which sessions are open
+    // is not: whoever is stood in the room with a PIN to type is a plain member, and the box
+    // that asks them for it would otherwise be hidden behind a role they do not hold.
+    const openSessions = action === 'session' && params.function === 'open'
     const needsLeader =
-      action === 'attendance' || action === 'session' || (action === 'admin' && params.function === 'roster')
+      !openSessions &&
+      (action === 'attendance' ||
+        action === 'session' ||
+        (action === 'admin' && params.function === 'roster'))
     const needsAdmin =
       !needsLeader &&
       (action === 'admin' ||
@@ -357,19 +387,18 @@ export default async function handler(req, res) {
       }
     }
     /*
-      Recording yourself as not attending is the only attendance write a browser has, and it
-      is the one the attendance page makes. Three things are forced and one is refused. Forced:
-      the address the row speaks about is the token's, never the body's; the answer is always
-      false, so nothing a page can send marks anybody present; and only these columns are
-      passed on, which is what keeps a request from writing recorded_by, a session or a
-      latitude. A reason may be left out, and an empty one is sent as null rather than as the
-      empty string; when one is given it is the caller's own wording, kept exactly as typed
-      rather than matched to a list. Refused: a row that already says present is never turned
-      into an absence. Being
-      there is a fact about a day that has gone by, and a yes that could be taken back would
-      end up recording whoever edited the list rather than who was in the room. A date that has
-      not come is allowed — that is the point of the box — because an apology travels ahead of
-      the gathering it is about.
+      Recording yourself as not attending is one of the two attendance writes a browser has, and
+      the one the absence box on the member's page makes. Three things are forced and one is
+      refused. Forced: the address the row speaks about is the token's, never the body's; the
+      answer is always false, so this path cannot be turned into the presence the branch below it
+      writes; and only these columns are passed on, which is what keeps a request from writing
+      recorded_by, a session or a latitude. A reason may be left out, and an empty one is sent as
+      null rather than as the empty string; when one is given it is the caller's own wording, kept
+      exactly as typed rather than matched to a list. Refused: a row that already says present is
+      never turned into an absence. Being there is a fact about a day that has gone by, and a yes
+      that could be taken back would end up recording whoever edited the list rather than who was
+      in the room. A date that has not come is allowed — that is the point of the box — because an
+      apology travels ahead of the gathering it is about.
     */
     if (action === 'event' && params.function === 'record') {
       const event_date = String(params.event_date || '').trim()
@@ -414,6 +443,165 @@ export default async function handler(req, res) {
         reason: reason || null,
       }
     }
+    /*
+      Checking in with a PIN is the second attendance write a browser has, and the only one that
+      can answer yes. Everything that decides the yes is read by the server instead of being
+      asked of the page: the PIN is matched against the session table, the window, the day, the
+      gathering's name and the place it was opened from all come off that row, the address comes
+      from the token, and the arrival time comes off this function's own clock. What the page
+      contributes is four digits and the two coordinates its device reported — which is the whole
+      point of the box, since a room is checked in from sixty phones and nobody types sixty names.
+
+      It is filed under 'event' rather than 'session' deliberately. The leader tier above is
+      keyed on the action, so a check-in asking to be a session call would refuse every plain
+      member — and a plain member standing in the room is exactly who this row is about.
+
+      The distance rule is the reason the reading is asked for at all: four digits can be told to
+      a friend, texted to a phone, or read off a screenshot, so the PIN on its own proves that
+      somebody knows about a gathering, not that they came to it. Turning it off is the leader's
+      call and theirs alone, made in the room as the session is opened, and it is stored on the
+      row rather than kept here.
+    */
+    if (action === 'event' && params.function === 'checkin') {
+      const pin = String(params.pin || '').trim()
+      if (!/^\d{4}$/.test(pin)) {
+        return res
+          .status(400)
+          .json({ error: 'params.pin must be the four digits the leader read out' })
+      }
+      if (!params.community_id) {
+        return res.status(400).json({ error: 'params.community_id is required to check in' })
+      }
+      const link = await links.find(email, params.community_id)
+      if (!link) {
+        return res
+          .status(403)
+          .json({ error: 'only a member of that community can check in at one of its gatherings' })
+      }
+      const now = new Date()
+      /*
+        Those four digits are only unique within one day — `unique (community_id, date, pin)` —
+        so the same PIN can belong to this Sunday and next, and the window decides which one is
+        being stood in now. The newest start wins if two somehow overlap.
+      */
+      const openings = await new Session(god.url, god.key).all({
+        community_id: params.community_id,
+        pin,
+      })
+      const open = openings
+        .filter((one) => new Date(one.started_at) <= now && new Date(one.ended_at) >= now)
+        .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))[0]
+      if (!open) {
+        if (!openings.length) {
+          return res
+            .status(400)
+            .json({ error: 'no check-in is open in this community on those four digits' })
+        }
+        /*
+          No time is quoted here, and that is not laziness: this function runs in UTC and the
+          room does not, so a clock printed server-side is a clock wrong by the offset between
+          the two. Which of the two it is comes back as its own refusal, and the leader standing
+          in front of the room is the one who can say the hour.
+        */
+        const last = openings.reduce(
+          (best, one) => (new Date(one.ended_at) > new Date(best.ended_at) ? one : best),
+          openings[0],
+        )
+        return res.status(400).json({
+          error:
+            new Date(last.started_at) > now
+              ? 'that check-in has not opened yet — ask the leader again when it starts'
+              : 'that check-in has closed, so the PIN no longer records anybody at it',
+        })
+      }
+      /*
+        A session seeded before these columns existed names no gathering, and `event.event_name`
+        is both not nullable and part of what makes an attendance row unique — so there is no row
+        this could write, and saying so beats a constraint error nobody could interpret.
+      */
+      if (!open.event_name) {
+        return res.status(400).json({
+          error:
+            'that session was opened without naming a gathering, so nobody can be checked in at it — ask the leader to open a new one',
+        })
+      }
+      const latitude = reading(params.latitude)
+      const longitude = reading(params.longitude)
+      const reported =
+        Number.isFinite(latitude) &&
+        Number.isFinite(longitude) &&
+        Math.abs(latitude) <= 90 &&
+        Math.abs(longitude) <= 180
+      /*
+        Three ways this check-in asks no question about distance: the leader turned the rule off,
+        the session carries no radius, or it carries a radius but no place of its own to measure
+        from. The last two are what every seeded session row is, so those PINs record anybody
+        standing anywhere — which is documented rather than quietly fixed here.
+      */
+      const limit =
+        open.allow_any_radius === true ||
+        open.radius === null ||
+        open.radius === undefined ||
+        !Number.isFinite(open.latitude) ||
+        !Number.isFinite(open.longitude)
+          ? null
+          : Number(open.radius)
+      if (limit !== null && !reported) {
+        return res.status(403).json({
+          error:
+            'this check-in is only taken from near where it was opened, so it needs the position this device reports',
+        })
+      }
+      const metres =
+        reported && limit !== null
+          ? Math.round(distanceInMetres({ latitude: open.latitude, longitude: open.longitude }, { latitude, longitude }))
+          : null
+      if (limit !== null && metres !== null && metres > limit) {
+        return res.status(403).json({
+          error: `you are ${metres} m from where this was opened, and it only takes check-ins within ${Math.round(limit)} m of that`,
+        })
+      }
+      const gatherings = new Event(god.url, god.key)
+      const [already] = await gatherings.all({
+        community_id: params.community_id,
+        event_date: open.date,
+        event_name: open.event_name,
+        user_email: email,
+      })
+      /*
+        Two taps are the same arrival twice. `checked_in_at` is the time the room was walked into,
+        so a row that already says present is left exactly as it was written and this request
+        changes nothing — otherwise the last tap would be remembered as the arrival, and a
+        register that moves backwards is worse than one that is short.
+      */
+      if (already?.attend) {
+        return res.status(200).json({ data: { ...already, already: true, metres } })
+      }
+      /*
+        An apology sent earlier for the same gathering is overwritten, and that is the right
+        answer rather than an exception: a notice says somebody will not come, and they came.
+        `latitude` and `longitude` carry the gathering's place, the same pair every other row at
+        this session will hold and the pair the creator's own row was written with, while the
+        `checkin_` columns carry where this phone was. Two different questions, and the columns
+        already say which is which.
+      */
+      params = {
+        function: 'record',
+        community_id: params.community_id,
+        event_date: open.date,
+        event_name: open.event_name,
+        user_email: email,
+        attend: true,
+        reason: null,
+        recorded_by: email,
+        session_id: open.session_id,
+        checked_in_at: now.toISOString(),
+        checkin_latitude: reported ? latitude : null,
+        checkin_longitude: reported ? longitude : null,
+        latitude: open.latitude,
+        longitude: open.longitude,
+      }
+    }
     if (params.function === 'update') {
       const allowed = SELF_FIELDS[action] ?? []
       const changes = Object.fromEntries(
@@ -450,6 +638,33 @@ export default async function handler(req, res) {
           .json({ error: 'that community already has members, so only the server key can add one' })
       }
       params = { ...params, role: 'admin' }
+    }
+    /*
+      Whether there is anything to check in to, which is what a dashboard asks on a timer so the
+      PIN box stays out of the way until a leader has opened a session. Any member of the
+      community may ask it — the person stood in the room with four digits to type is a plain
+      member, and hiding the box behind a leader role would hide it from exactly the people it
+      exists for. The answer is the name, the window and whether a distance will be asked about,
+      and neither the PIN nor the place the session was opened at, neither of which this question
+      needs and either of which would answer the check-in before it was asked.
+    */
+    if (action === 'session' && params.function === 'open') {
+      if (!params.community_id) {
+        return res
+          .status(400)
+          .json({ error: 'params.community_id is required to read its open check-ins' })
+      }
+      const link = await links.find(email, params.community_id)
+      if (!link) {
+        return res
+          .status(403)
+          .json({ error: 'only a member of that community can read what is open for check-in there' })
+      }
+      const openings = await new Session(god.url, god.key).open({
+        community_id: params.community_id,
+        now: new Date().toISOString(),
+      })
+      return res.status(200).json({ data: openings })
     }
     /*
       Opening a check-in session writes two rows: the session itself, and the creator's own
@@ -507,6 +722,25 @@ export default async function handler(req, res) {
             'params.latitude and params.longitude are both needed, as this device reported them',
         })
       }
+      /*
+        How near the room a check-in has to come from, in metres, and whether that question is
+        asked at all. Both are the leader's to decide, and decided in the room: a hall where the
+        signal reads badly is worth a wider number, and a gathering that meets in three towns at
+        once is worth turning the rule off. A blank radius stays blank rather than being
+        defaulted here, because a null reads back upstream as no limit, which is the honest
+        outcome of a leader who set no number; and a radius kept alongside `allow_any_radius` is
+        stored but unused, so switching the rule back off later returns to what was first set.
+      */
+      const allow_any_radius = params.allow_any_radius === true
+      const radius =
+        params.radius === null || params.radius === undefined || params.radius === ''
+          ? null
+          : Number(params.radius)
+      if (radius !== null && (!Number.isFinite(radius) || radius <= 0 || radius > 20000)) {
+        return res
+          .status(400)
+          .json({ error: 'params.radius is a distance in metres, from 1 to 20000' })
+      }
       const date = started.slice(0, 10)
       params = {
         function: 'create',
@@ -519,6 +753,8 @@ export default async function handler(req, res) {
         event_name,
         latitude,
         longitude,
+        radius,
+        allow_any_radius,
       }
       /*
         The attendance row is held back until the session insert answers with its id, which is

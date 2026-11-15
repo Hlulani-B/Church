@@ -6,8 +6,8 @@ import { createClient } from '@supabase/supabase-js'
   most 1000 of them in one read (findings.md #2). Both methods here are shaped around that
   rather than pretending it does not happen: services() groups the newest 1000 rows into
   gatherings, and service() asks for a single gathering, which is never bigger than the
-  roster. /api/god maps the action 'attendance' onto this class and answers it only for an
-  admin of the community_id in the request.
+  roster. /api/god maps the action 'attendance' onto this class and answers it for a leader
+  or an admin of the community_id in the request.
 
   The name beside each address comes from the join to users, which row level security keeps
   from a browser. That is exactly why this read is a server one and the testimonies page,
@@ -15,6 +15,16 @@ import { createClient } from '@supabase/supabase-js'
 */
 
 const SAMPLE = 1000
+
+/*
+  Whether a gathering's day has come yet, as the date column writes it. A row that answers
+  present for a Sunday three weeks away is not a fact about a room — nobody has taken that
+  register — so both reads below refuse to present a yes as one. Only the true is dropped this
+  way; an apology for a future gathering is a real thing that was sent, and it still shows.
+*/
+function upcoming(event_date) {
+  return String(event_date) > new Date().toISOString().slice(0, 10)
+}
 
 export class Attendance {
   constructor(url = process.env.SUPABASE_URL, key = process.env.SUPABASE_ANON_KEY) {
@@ -51,9 +61,11 @@ export class Attendance {
         event_name: row.event_name,
         present: 0,
         total: 0,
+        upcoming: upcoming(row.event_date),
       }
       found.total += 1
-      if (row.attend) found.present += 1
+      // A gathering whose day has not come has no present, however its rows are filled in.
+      if (row.attend && !found.upcoming) found.present += 1
       byService.set(key, found)
     }
 
@@ -85,12 +97,15 @@ export class Attendance {
       .limit(SAMPLE)
     if (error) throw error
 
+    const pending = upcoming(event_date)
     const rows = data.map(({ event_id, user_email, attend, reason, users }) => ({
       event_id,
       email: user_email,
       name: users?.name ?? '',
       surname: users?.surname ?? '',
-      attend: Boolean(attend),
+      // A yes for a day that has not come is answered as nothing taken yet; a notice of
+      // absence stays a notice, because that was really sent.
+      attend: pending ? (attend ? null : false) : Boolean(attend),
       reason: reason || '',
     }))
     rows.sort((a, b) => `${a.surname} ${a.name}`.localeCompare(`${b.surname} ${b.name}`))
@@ -98,8 +113,9 @@ export class Attendance {
     return {
       event_date,
       event_name,
+      upcoming: pending,
       total: count ?? data.length,
-      present: rows.filter((one) => one.attend).length,
+      present: rows.filter((one) => one.attend === true).length,
       rows,
     }
   }

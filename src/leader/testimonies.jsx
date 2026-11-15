@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
 import { TestimoniesFetch } from "../page_functions/testimonies.js";
 import LeaderMenu from "./menu.jsx";
+import BackToCommunities from "../components/back.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
 const accounts = new Auth();
@@ -357,6 +358,7 @@ export default function LeaderTestimonies() {
       <div className="bar">
         <LeaderMenu state={leader} />
         <a className="logo serif" href="/community">Kopano</a>
+        <BackToCommunities />
       </div>
 
       <main className="main">
@@ -444,19 +446,22 @@ export default function LeaderTestimonies() {
             </p>
 
             {page.testimonies.map((one) => {
-              // The roster gives the name; a person who has since left the community is not on
-              // it, and their address is the only thing the row says about who wrote it.
-              const who = one.name ? `${one.name} ${one.surname}`.trim() : one.email;
+              /*
+                The roster is where the names come from, so somebody who has since left the
+                community is not on it — ten sharing rows in this community are not. Their
+                address is what the table holds about them, and an address is personal to its
+                owner, so the card says only that the person who wrote it is gone from the list.
+              */
+              const named = `${one.name} ${one.surname}`.trim();
+              const who = named || "Someone who has left";
               return (
                 <article className="item" key={one.testimony_id}>
                   <span className="avatar" aria-hidden="true">
-                    {who.charAt(0).toUpperCase()}
+                    {named ? named.charAt(0).toUpperCase() : ""}
                   </span>
                   <div>
                     <div className="meta">
-                      <span className="who" title={one.email}>
-                        {who}
-                      </span>
+                      <span className="who">{who}</span>
                       <span>{pretty(one.date)}</span>
                     </div>
                     <p className="body">{one.body}</p>

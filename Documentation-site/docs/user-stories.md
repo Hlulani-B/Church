@@ -11,7 +11,7 @@ value, which would renumber the leader and admin stories from 1. -->
 <ol start="1">
 <li>As a member, I want to log in so that my records are linked to me.</li>
 <li>As a member, I want to mark myself Attending or Not Attending for the week so that leaders know who is coming.</li>
-<li>As a member, I want to pick a reason (Work, Transport, Sick, Family, Other) when I am not attending so that leaders understand why.</li>
+<li>As a member, I want to write my own reason for not attending — in words I choose, with Work, Transport, Sick, Family and Other offered as suggestions — or give none at all, so that leaders understand why.</li>
 <li>As a member, I want to change my availability before the meeting so that I can fix a mistake or a change of plans.</li>
 <li>As a member, I want to log a weekly testimony so that it is recorded and not forgotten.</li>
 <li>As a member, I want to see my own past attendance and testimonies so that I can track my own consistency.</li>

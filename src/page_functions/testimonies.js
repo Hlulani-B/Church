@@ -199,16 +199,16 @@ export class TestimoniesFetch {
   }
 
   /*
-    The four columns an export is written out of. The names are already on the rows, because
-    every testimony is read through the roster, so somebody who has since been taken out of the
-    community is not on it any more and their address stands in for the name — the row is still
-    attributable to a real account.
+    The four columns an export is written out of. The names come from the roster, so somebody
+    who has since been taken out of the community has no name to write, and their address is
+    not a substitute for it: an exported file is the kind of thing that leaves a room, so the
+    Name and Surname cells stay empty and the row keeps only its date and its body.
   */
   async exportRows(community_id, search = {}) {
     const { testimonies } = await this.allTestimonies(community_id, search)
     return testimonies.map((one) => ({
-      name: one.name || one.email,
-      surname: one.surname,
+      name: one.name || '',
+      surname: one.surname || '',
       date: one.date,
       body: one.body,
     }))

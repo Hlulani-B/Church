@@ -2,9 +2,6 @@ import { createClient } from '@supabase/supabase-js'
 
 const TABLE = 'event'
 const UNIQUE_EVENT = 'community_id,event_date,event_name,user_email'
-// The five the column's check constraint allows, so a reason can be refused with a sentence
-// rather than with the constraint's error code.
-export const REASONS = ['Work', 'Transport', 'Sick', 'Family', 'Other']
 const FILTERABLE = [
   'community_id',
   'event_name',

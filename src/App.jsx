@@ -13,6 +13,8 @@ import LeaderDashboard from './leader/Dashboard.jsx'
 import LeaderTestimonies from './leader/testimonies.jsx'
 import LeaderAttendance from './leader/attendance.jsx'
 import MemberDashboard from './member/Dashboard.jsx'
+import MemberTestimonies from './member/testimonies.jsx'
+import TakeAttendance from './pages/take_attendance.jsx'
 
 function NotFound() {
   return (
@@ -40,6 +42,8 @@ function App() {
       <Route path="/leader-testimonies" element={<LeaderTestimonies />} />
       <Route path="/leader-attendance" element={<LeaderAttendance />} />
       <Route path="/member-dashboard" element={<MemberDashboard />} />
+      <Route path="/member-testimonies" element={<MemberTestimonies />} />
+      <Route path="/take-attendance" element={<TakeAttendance />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   )

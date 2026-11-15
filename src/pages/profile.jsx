@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Auth } from "../functions/auth.js";
 import { UserFetch } from "../page_functions/user.js";
 import Menu from "../components/menu.jsx";
+import BackToCommunities from "../components/back.jsx";
 
 const accounts = new Auth();
 const users = new UserFetch();
@@ -116,6 +117,7 @@ export default function ProfilePage() {
       <div className="bar">
         <a className="logo serif" href="/community">Kopano</a>
         <Menu />
+        <BackToCommunities />
       </div>
 
       <article className="doc">

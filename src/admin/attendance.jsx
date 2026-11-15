@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
 import { AttendanceFetch, REASONS } from "../page_functions/attendance.js";
 import AdminMenu from "./menu.jsx";
+import BackToCommunities from "../components/back.jsx";
 import { adminState, rememberAdmin } from "./state.js";
 
 const accounts = new Auth();
@@ -83,6 +84,16 @@ function today() {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+/*
+  What the Attended column says. A null is not the same answer as a no: it is a gathering whose
+  day has not come, whose register has not been taken, and the server reads it as nothing
+  rather than letting a filled-in yes say otherwise.
+*/
+function attended(one) {
+  if (one.attend === null) return "Not yet";
+  return one.attend ? "Yes" : "No";
+}
+
 export default function AdminAttendance() {
   const navigate = useNavigate();
   const route = useLocation().state;
@@ -102,6 +113,13 @@ export default function AdminAttendance() {
   const [note, setNote] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState("");
+  /*
+    The notice keeps its own refusal. `error` means a read failed, and every list on this page
+    hides itself while it is set — so when a notice was the thing that failed, writing it took
+    the gatherings and the people of the open one off the screen with it, and nothing brought
+    them back until a reload. A typed-in reason says so beside the box and leaves the page up.
+  */
+  const [noticeError, setNoticeError] = useState("");
 
   useEffect(() => {
     return accounts.onChange((user) => {
@@ -143,6 +161,9 @@ export default function AdminAttendance() {
   const chosen = picked?.community_id === communityId ? picked : null;
   const gathering = found?.community_id === communityId ? found : null;
 
+  // The apologies already on file for whichever gathering is on screen.
+  const notices = gathering ? gathering.rows.filter((one) => one.attend === false).length : 0;
+
   useEffect(() => {
     if (!email || !communityId) return;
     attendance
@@ -180,11 +201,11 @@ export default function AdminAttendance() {
     const name = absence.name.trim();
     if (!absence.date || !name) {
       setNote("");
-      setError("A day and a gathering: both are needed to record an absence.");
+      setNoticeError("A day and a gathering: both are needed to record an absence.");
       return;
     }
     setSaving(true);
-    setError("");
+    setNoticeError("");
     try {
       await attendance.markNotAttending({
         community_id: communityId,
@@ -193,15 +214,15 @@ export default function AdminAttendance() {
         reason: absence.reason,
       });
       setNote(
-        absence.reason
-          ? `You are recorded as not attending ${name} on ${pretty(absence.date)}, because of ${absence.reason}.`
+        absence.reason.trim()
+          ? `You are recorded as not attending ${name} on ${pretty(absence.date)} — ${absence.reason.trim()}.`
           : `You are recorded as not attending ${name} on ${pretty(absence.date)}.`,
       );
       setAbsence({ date: today(), name: "", reason: "" });
       setRefresh((count) => count + 1);
     } catch (e) {
       setNote("");
-      setError(e.message);
+      setNoticeError(e.message);
     } finally {
       setSaving(false);
     }
@@ -236,6 +257,7 @@ export default function AdminAttendance() {
       <div className="bar">
         <AdminMenu state={admin} />
         <a className="logo serif" href="/community">Kopano</a>
+        <BackToCommunities />
       </div>
 
       <main className="main">
@@ -254,7 +276,9 @@ export default function AdminAttendance() {
             <p className="what">Not attending</p>
             <p className="why">
               Record that you will not be at a gathering, including one whose day has not come
-              yet. A reason is optional. This writes not attending only — nothing here marks
+              yet. A reason is optional, and when you give one it is in your own words — the box
+              offers the usual five, and takes anything you type. This writes not attending only
+              — nothing here marks
               anybody present, and a gathering you are recorded as being at keeps that record.
             </p>
             <div className="fields">
@@ -277,17 +301,20 @@ export default function AdminAttendance() {
               </label>
               <label>
                 Reason
-                <select
+                <input
+                  type="text"
+                  list="absence-reasons"
                   value={absence.reason}
+                  placeholder="In your own words, or leave it blank"
                   onChange={(event) => setAbsence({ ...absence, reason: event.target.value })}
-                >
-                  <option value="">No reason</option>
+                />
+                {/* The five the fellowship usually hears, offered as you type — they are
+                    suggestions now, not a list the box will accept. */}
+                <datalist id="absence-reasons">
                   {REASONS.map((one) => (
-                    <option key={one} value={one}>
-                      {one}
-                    </option>
+                    <option key={one} value={one} />
                   ))}
-                </select>
+                </datalist>
               </label>
               <button className="go" type="submit" disabled={saving}>
                 {saving ? "Recording…" : "Record absence"}
@@ -296,10 +323,11 @@ export default function AdminAttendance() {
             <p className="against">
               Recorded against {admin.email} in {admin.name || "this community"}.
             </p>
+            {noticeError && <div className="note bad">{noticeError}</div>}
+            {note && !noticeError && <div className="note">{note}</div>}
           </form>
         )}
         {error && <div className="note bad">{error}</div>}
-        {note && !error && <div className="note">{note}</div>}
         {!error && !list && communityId && <p className="tally">Loading…</p>}
 
         {list && !chosen && !error && (
@@ -330,7 +358,7 @@ export default function AdminAttendance() {
                     <tr key={`${one.event_date}|${one.event_name}`}>
                       <td>{pretty(one.event_date)}</td>
                       <td className="who">{one.event_name}</td>
-                      <td className="num">{one.present}</td>
+                      <td className="num">{one.upcoming ? "—" : one.present}</td>
                       <td className="num">{one.total}</td>
                       <td className="last">
                         <button
@@ -360,8 +388,9 @@ export default function AdminAttendance() {
         {chosen && gathering && !error && (
           <>
             <p className="tally">
-              {gathering.event_name} on {pretty(gathering.event_date)} — {gathering.present} of{" "}
-              {gathering.total} recorded as present.
+              {gathering.upcoming
+                ? `${gathering.event_name} on ${pretty(gathering.event_date)} — that day has not come, so nobody is counted present at it. ${notices} ${notices === 1 ? "notice has" : "notices have"} been sent ahead of it.`
+                : `${gathering.event_name} on ${pretty(gathering.event_date)} — ${gathering.present} of ${gathering.total} recorded as present.`}
             </p>
             <table>
               <thead>
@@ -375,9 +404,9 @@ export default function AdminAttendance() {
                 {gathering.rows.map((one) => (
                   <tr key={one.event_id}>
                     <td className="who">
-                      {`${one.name} ${one.surname}`.trim() || one.email}
+                      {`${one.name} ${one.surname}`.trim() || "Someone who has left"}
                     </td>
-                    <td className={one.attend ? "" : "out"}>{one.attend ? "Yes" : "No"}</td>
+                    <td className={one.attend === true ? "" : "out"}>{attended(one)}</td>
                     <td className="reason">{one.reason || "—"}</td>
                   </tr>
                 ))}

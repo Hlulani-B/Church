@@ -34,8 +34,8 @@ message with a link to create an account instead of redirecting there.
 | `/terms` | `src/pages/TCs.jsx` | The policy text, linked from the agree checkbox on `/signup` |
 | `/community` | `src/pages/community.jsx` | The signed-in home page: greets the visitor from their own `users` row, lists their communities and opens new ones from a popup |
 | `/profile` | `src/pages/profile.jsx` | Changes **name and surname only**, through `/api/god` `user` `update` |
-| `/admin-dashboard` | `src/admin/Dashboard.jsx` | Headed **Admin**, the community's name and the address, over the roster of that community — name, surname, email and role from `users` joined onto `community_members` — searchable by any of those three, with that community's join code beside it to copy or draw again, and a ⋮ menu on every row but the signed-in one to put that person in another role or remove them |
-| `/admin-attendance` | `src/admin/attendance.jsx` | Every gathering this community has recorded, newest first, with how many of its rows were present; pressing one lists everyone recorded at it, present and absent, by name. At the top is the page's one write: a notice that whoever is signed in will not be at a gathering, whose day may not have come yet, with a reason they may leave blank |
+| `/admin-dashboard` | `src/admin/Dashboard.jsx` | Headed **Admin**, the community's name and the signed-in address, over the roster of that community — name, surname and role from `users` joined onto `community_members`, with no address in the table but the caller's own, in the heading — searchable by name or surname, with that community's join code beside it to copy or draw again, and a ⋮ menu on every row but the signed-in one to put that person in another role or remove them |
+| `/admin-attendance` | `src/admin/attendance.jsx` | Every gathering this community has recorded, newest first, with how many of its rows were present; pressing one lists everyone recorded at it, present and absent, by name. At the top is the page's one write: a notice that whoever is signed in will not be at a gathering, whose day may not have come yet, with a reason written in their own words and offered the usual five as suggestions, which they may leave blank |
 | `/admin-testimonies` | `src/admin/testimonies.jsx` | The community's testimonies, newest first, a hundred at a time, searched by date and by name — read by the browser straight from Supabase, which is why the names on those rows come from the roster rather than from a join |
 | `/leader-dashboard` | `src/leader/Dashboard.jsx` | Headed **Leader**, the same roster read, in the same table and behind the same search box — and that is the whole page: no ⋮ menu on any row, so there is nothing here to give a role or take anybody out, and no join code, because this page never asks for the community row that carries it |
 | `/leader-attendance` | `src/leader/attendance.jsx` | The same gatherings and the same per-gathering list the admin page shows, read-only — with the same notice at the top, because writing that one is what a member does about their own attendance, and a leader is a member first |
@@ -79,10 +79,12 @@ self-removal of a community that has more than one member; nothing in the app as
 from this community and then draws a new code in the same action, so a removal cannot
 leave the old code standing for somebody who memorised it. The popup spells out both
 halves before anything is written, because the code that everyone else types changes too.
-One search box sits above the list, on this page and on the leader's: a name, a surname, an
-address or any words from more than one of them, matched case-blind against the roster
+One search box sits above the list, on this page and on the leader's: a name or a surname, or
+any words from both, matched case-blind against the roster
 already read rather than asked of the server again, and it reports how many of the whole it
-shows and offers a Clear.
+shows and offers a Clear. It does not match on the address, and it is not only the column that
+is gone: matching an address would let the count of matches answer whether some address belongs
+to this community.
 There is no list of the other communities
 on this page to switch between and no default to whichever row comes back first, because
 that is how an admin ends up editing the wrong fellowship. Arriving without a chosen
@@ -197,9 +199,11 @@ always has: `admin` `roster` — the server read, which answers a leader or an a
 community and nobody else — for the community's
 people, joined onto the rows by address in this file. That is what titles a testimony on screen
 as well as what fills the name and surname columns of a file. Somebody removed since sharing is
-not on the roster and their address stands in for the name, because a row nobody gave is worse
-than a row named by an address. When the roster cannot be read the testimonies still come,
-titled by address; only a search by name is refused, because there would be nobody to match it
+not on the roster, and the card says **Someone who has left**: the address the row carries is the
+one thing that must not reach the screen, because it is that person's own to keep. The same rule
+holds for the file — the name and surname cells of such a row are left empty rather than filled
+with the address. When the roster cannot be read the testimonies still come, everyone of them
+unnamed; only a search by name is refused, because there would be nobody to match it
 against.
 
 The search is those names and those dates together. A word typed as a name is matched against
@@ -249,8 +253,10 @@ it describes the caller rather than anybody else it is not gated on the leader o
 any role's link in that `community_id` answers it, since a leader or an admin is a member
 first. What the request cannot decide is the address (the token's), the answer (always `false`)
 or the columns (the six a notice types, so a `recorded_by`, a `session_id` or a latitude in the
-body is dropped); a reason may be left out, which stores `null`, while a wording outside the
-five the column allows is refused before the insert. The one refusal is a gathering already
+body is dropped); a reason may be left out, which stores `null`, and when one is given it is the
+caller's own wording — the function no longer matches it against the five, so the only thing that
+can still refuse a phrase is the column's own check constraint, which
+`Documentation-site/docs/database.md` documents as dropped. The one refusal is a gathering already
 recorded as present: a yes is never taken back. The `testimony` action left
 `api/god.js` along with `src/functions/testimony.js` when that page started reading the table
 itself; the only server call it makes now is the `roster` one above, which the leader tier

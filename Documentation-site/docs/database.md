@@ -10,7 +10,7 @@ Run it once in the Supabase SQL Editor.
 | `users` | One row per person, keyed by `email`. |
 | `community` | A group of people, such as a fellowship, carrying the `join_id` code others use to find it. |
 | `community_members` | Links a person to a community and carries their `role`: `member`, `leader` or `admin`. |
-| `session` | A check-in session opened by a leader, with a `pin`, a date and a location. |
+| `session` | A check-in session opened by a leader: a `pin`, the gathering it was opened for, a date, a window and the place it was opened from. |
 | `event` | One row per member per event: whether they attended, the reason if they did not, and who recorded it. |
 | `testimony` | A testimony body written by a member for a given date. |
 
@@ -52,6 +52,8 @@ create table session (
   ended_at timestamptz not null,
   latitude double precision,
   longitude double precision,
+  /* what the leader called the gathering this session is for */
+  event_name text,
   unique (community_id, date, pin)
 );
 
@@ -65,7 +67,7 @@ create table event (
   longitude double precision,
   user_email text not null references users(email) on delete cascade,
   attend boolean,
-  reason text check (reason in ('Work', 'Transport', 'Sick', 'Family', 'Other')),
+  reason text,
   recorded_by text references users(email),
   session_id uuid references session(session_id),
   checked_in_at timestamptz,
@@ -134,6 +136,22 @@ alter table session enable row level security;
   policies need to be added before they can be read or written.
 - `event` and `testimony` have RLS left off, which means any authenticated
   request can read and write them.
+- `event.reason` is a plain nullable text column: the person giving notice writes it in their
+  own words, and an empty box leaves it null. It used to carry
+  `check (reason in ('Work', 'Transport', 'Sick', 'Family', 'Other'))`, which refused any other
+  wording with `23514`, and a database built before that change still has it until this is run
+  in the SQL Editor:
+
+  ```sql
+  alter table event drop constraint event_reason_check;
+  ```
+
+  The five words survive only as suggestions in the notice box (`REASONS` in
+  `src/page_functions/attendance.js`), and the rows already recorded keep whatever they were
+  given. Putting the check back is `alter table event add constraint event_reason_check check
+  (reason in ('Work', 'Transport', 'Sick', 'Family', 'Other'));` — which fails the moment one
+  row holds wording outside the five, so it is a decision to make about the data as it stands,
+  not a switch.
 - The roster of a community is one read, not two: `AdminDashboard.roster(community_id)`
   selects `email, role, users!inner(name, surname)` from `community_members` and lets
   Postgres do the join on `users(email)`. `!inner` is what makes it an inner join — a link

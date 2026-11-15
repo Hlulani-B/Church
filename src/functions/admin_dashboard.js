@@ -87,7 +87,7 @@ export class AdminDashboard {
       .select()
       .maybeSingle()
     if (error) throw error
-    if (!data) throw new Error(`${member_email} is not a member of that community`)
+    if (!data) throw new Error('that person is not a member of this community')
     return data
   }
 

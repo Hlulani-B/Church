@@ -50,8 +50,9 @@ not contain it.
 5. `event` `record` — the not-attending notice — is checked on its own, because it is about
    the caller rather than about anybody else, and so a member of any role may make it. Four
    things are decided there and none of them is left to the request: the address the row names
-   is the token's, the answer is always `false`, a reason is optional — an empty one is sent as
-   `null`, and a wording outside the five the column allows is refused before the insert — and
+   is the token's, the answer is always `false`, a reason is optional and handwritten — whoever
+   gives notice words it as they please, an empty box is sent as `null`, and the function no
+   longer matches the wording against a list — and
    only those six columns are passed on — a body that also carries
    `recorded_by`, a `session_id` or a latitude has those dropped before the insert. Then one
    refusal: the row for that person, that day, that gathering is read first, and if it already
@@ -97,7 +98,23 @@ The leader pages are the admin ones with nothing to click: the roster arrives wi
 ⋮ menu that changes a role or takes somebody out, and no leader page asks the function for
 the community row, so the join code is never fetched into a leader's browser. What a leader
 cannot do is not hidden on the page — it is refused by the function, and the table above is
-the list of which tier answers what.
+the list of which tier answers what. The admin dashboard does hide one thing: the row that
+holds the signed-in address carries no menu, because that page is not how an admin hands
+their own role on or leaves.
+
+## The one place the read disagrees with the table
+
+`services` and `service` in `src/functions/attendance.js` compare each gathering's day with
+today. A row that answers present for a day that has not come is read as nothing taken yet:
+the list shows no present for that gathering and the page says *Not yet* beside each name,
+because a register for a Sunday three weeks away has not been called. An apology for that
+same future gathering is still a no with its reason — somebody really sent it — and nothing is
+rewritten: the yeses stay in `event` exactly as they were seeded, and only this read declines
+to show them. Both attendance pages go through this one class, so the rule is stated once.
+
+What the read does not do is make the notice overwrite such a row. `event` `record` still
+refuses a person who already has a yes, future or not — *a yes is never taken back* — so an
+apology for a seeded future gathering is refused while the same gathering shows *Not yet*.
 
 ## What is enforced today
 
@@ -119,10 +136,11 @@ instead.
 - **`join_id` is unique**: two communities cannot hold the same code, which is what
   makes the collision test in `AdminDashboard.changeCode` trustworthy rather than a
   courtesy. A second insert with a code already taken came back `23505`.
-- **A role is one of three words** and a reason is one of five, checked by `check`
-  constraints in the table: an insert with `role` `president` and one with `reason`
-  `Nope` both came back `23514` with nothing written, and the same row with `reason`
-  `Sick` was accepted.
+- **A role is one of three words**, checked by a `check` constraint in the table: an insert with
+  `role` `president` came back `23514` with nothing written. The reason column carried the same
+  kind of check — a `reason` of `Nope` came back `23514` too, and `Sick` was accepted — and that
+  one is on its way out, because a notice is now written in the member's own words. See *What is
+  not enforced yet* for the one statement that takes it off the live table.
 - **A leader reads the people and the attendance; only an admin changes anything.** Asked
   today of the live function with a real Firebase ID token: one address that `leader`s one
   throwaway community and `admin`s another was answered `200` for `roster` and
@@ -147,8 +165,11 @@ instead.
   second reason, because the four columns are unique. A reason is optional: a notice with an
   empty one and one with the box missing altogether both came back `200` and stored
   `reason = null`, and a reason typed onto such a notice replaced it without writing a second
-  row. A wording outside the five — `Nope` — was still `400`, and the row kept the reason it
-  had; a notice with no community and one with no gathering were `400` too, and a community the
+  row. A wording outside the five — `Nope` — was `400` then, refused by the function before it
+  reached the table; that test has since come out of `api/god.js`, because the wording is the
+  member's to choose and a notice they cannot finish typing is no use to anybody. What remains is
+  the column's own check, named below.
+  A notice with no community and one with no gathering were `400` too, and a community the
   caller is not in was `403` with its row count unmoved. The
   probe community, its rows, its link, its `users` row and the sign-in account were all
   deleted afterwards, and community A was re-read at 3450 attendance rows.
@@ -167,9 +188,9 @@ instead.
 
 ## What is not enforced yet
 
-The two tables the browser writes to have no protection of their own, and the check-in
-rule that needs the database has not been written. Both are still ahead of us, not
-behind us:
+The two tables the browser writes to have no protection of their own, the check-in rule that
+needs the database has not been written, and an address taken off the screen is not an address
+withheld. The first two are still ahead of us, not behind us:
 
 - **RLS is off on `event` and `testimony`.** The browser key reads all 4650 `event` rows
   and all 467 `testimonies` today. A probe row was updated and then deleted with the
@@ -188,6 +209,24 @@ behind us:
   and `api/god.js` has a `session` action, but `SELF_ACTIONS` has no `session` entry, so
   only the server key could create one today, and nothing holds that key except the
   function itself.
+- **An address is hidden by the pages, not withheld by the function.** `admin` `roster` still
+  answers `email` for every person in the community, and `attendance` `service` still answers
+  `email` for every attendee, because the roster row, the ⋮ menu and the two write calls are keyed
+  by that address. What changed is what is drawn: no column, popup, card, tooltip or exported cell
+  prints an address that is not the reader's own, and the dashboard search no longer matches on one.
+  So a leader who opens their browser's network tab reads the whole list of addresses today exactly
+  as they did yesterday. Turning that into a refusal means giving the roster rows an id the function
+  resolves for itself, which is a change to what `assign` and `member` `remove` are asked for rather
+  than to what is drawn — deliberately not made here.
+- **The notice is written in the member's own words, and the live column has not been told it
+  may.** `api/god.js` stopped matching the reason against the five, and the box on both attendance
+  pages takes any wording with the five offered only as suggestions. `Documentation-site/docs/database.md`
+  documents the column as a plain nullable `text` for that reason. The database this runs against
+  still carries `event_reason_check`, so until
+  `alter table event drop constraint event_reason_check;` is run in the SQL Editor a handwritten
+  reason comes back as `23514` and only the five suggested words write. Nothing in the app can do
+  this: PostgREST answers queries and inserts, not DDL, and there is no `psql`, CLI or Management
+  API credential in the project.
 - **A member still cannot mark themselves attending.** The only screen that writes attendance
   is the notice at the top of the admin and leader attendance pages, it is about whoever is
   signed in, and it always answers no. `src/member/Dashboard.jsx` is still a placeholder, so a

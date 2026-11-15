@@ -8,8 +8,8 @@ import { callGod } from './god.js'
   gathering, and changes nothing about anybody else's.
 */
 
-// The five a not-attending notice can give, copied so a page can fill a box without importing
-// server code. src/functions/event.js holds the same five as the alphabet the column accepts.
+// The five the fellowship usually hears, offered as suggestions while the reason is typed. They
+// are not a list the notice accepts: the box takes whatever wording the person gives it.
 export const REASONS = ['Work', 'Transport', 'Sick', 'Family', 'Other']
 
 export class AttendanceFetch {
@@ -25,7 +25,8 @@ export class AttendanceFetch {
 
   /*
     Recording that whoever is signed in will not be at a gathering. Two things are needed: the
-    day and the gathering. A reason may be added, and left out. Whether the person came is not
+    day and the gathering. A reason may be added, in the caller's own words, and left out.
+    Whether the person came is not
     among the boxes — this writes not attending, for the caller, and /api/god forces both
     rather than trusting the page — and a date that has not come is exactly what the box is
     for, because an apology is sent ahead of the gathering it is about. The row is written once

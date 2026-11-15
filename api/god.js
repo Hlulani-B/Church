@@ -5,7 +5,7 @@ import { Community } from '../src/functions/community.js'
 import { CommunityMember } from '../src/functions/community_members.js'
 import { AdminDashboard, ROLES } from '../src/functions/admin_dashboard.js'
 import { Attendance } from '../src/functions/attendance.js'
-import { Event, REASONS } from '../src/functions/event.js'
+import { Event } from '../src/functions/event.js'
 import { Session } from '../src/functions/session.js'
 
 function badRequest(message) {
@@ -65,6 +65,15 @@ export class God {
     switch (fn) {
       case 'create':
         return client.create(data)
+      case 'join':
+        // Community only: the handler read the community_id off the code before getting here.
+        if (data.community_id === undefined)
+          throw badRequest("params.community_id is required for 'join'")
+        return client.join(data)
+      case 'pin':
+        // Session only, and it touches no table: the four digits are drawn for the page to
+        // show the room, and travel back in the create that follows.
+        return client.pin()
       case 'all':
         return client.all(data)
       case 'memberOf':
@@ -178,17 +187,25 @@ async function verifiedEmail(token) {
 // What a signed-in browser may do without the server key: only its own user row,
 // and only the communities its own email belongs to. Opening a community is allowed
 // because the guard below pairs it with joining that new community as its first member.
+// Joining with somebody else's code is allowed because the address and the role both come
+// from the server there, and the community only from the code.
 // Everything under 'admin' and 'attendance' describes other people, so the caller's role in
 // the community_id in the request answers those — an admin for anything that changes them, a
 // leader for reading them. 'event' opens exactly one write, and it is about the caller:
-// recording that they are not attending. Nothing a browser can ask here marks anybody present.
+// recording that they are not attending. 'session' opens the two the take-attendance page
+// makes — drawing a PIN, which writes nothing, and the session row that follows, which also
+// records its own creator as present at the gathering they just opened, because whoever runs
+// the check-in is in the room. Both answer to the leader tier, since a session belongs to the
+// running of the room rather than to anybody else's record. Nothing else a browser can ask
+// marks anybody present.
 const SELF_ACTIONS = {
   user: ['find', 'create', 'update'],
-  community: ['memberOf', 'create', 'find'],
+  community: ['memberOf', 'create', 'find', 'join'],
   member: ['create', 'find', 'remove'],
   admin: ['roster', 'changeCode', 'assign'],
   attendance: ['services', 'service'],
   event: ['record'],
+  session: ['create', 'pin'],
 }
 // email is the primary key of users, so a browser must never move a row onto
 // someone else's address; everything except these two columns is dropped. community has
@@ -213,6 +230,8 @@ export default async function handler(req, res) {
   }
 
   let { action, params = {} } = req.body || {}
+  // What a session create owes the `event` table once it has a session_id to point at.
+  let creator = null
   const god = new God()
   if (!matchesServerKey(token)) {
     const { email, reason } = await verifiedEmail(token)
@@ -245,7 +264,10 @@ export default async function handler(req, res) {
     const links = new CommunityMember(god.url, god.key)
     // The leader tier is asked first because it is the narrower one: 'admin' roster answers
     // the admin test too, and a read matched on both would be settled as a change.
-    const needsLeader = action === 'attendance' || (action === 'admin' && params.function === 'roster')
+    // A session is on this tier because opening one is about a gathering, not about anybody's
+    // record at it, and the leader role exists to run the room.
+    const needsLeader =
+      action === 'attendance' || action === 'session' || (action === 'admin' && params.function === 'roster')
     const needsAdmin =
       !needsLeader &&
       (action === 'admin' ||
@@ -263,7 +285,7 @@ export default async function handler(req, res) {
         return res.status(403).json({
           error: needsAdmin
             ? 'only an admin of that community can change its roles, its people or its join code'
-            : 'only a leader or an admin of that community can read its people and its attendance',
+            : 'only a leader or an admin of that community can read its people and its attendance, or open a check-in session',
         })
       }
     }
@@ -285,7 +307,7 @@ export default async function handler(req, res) {
       }
       const row = await links.find(target, params.community_id)
       if (!row) {
-        return res.status(400).json({ error: `${target} is not a member of that community` })
+        return res.status(400).json({ error: 'that person is not a member of this community' })
       }
       if (row.role === 'admin' && target !== email) {
         return res
@@ -322,7 +344,7 @@ export default async function handler(req, res) {
       }
       const row = await links.find(target, params.community_id)
       if (!row) {
-        return res.status(400).json({ error: `${target} is not a member of that community` })
+        return res.status(400).json({ error: 'that person is not a member of this community' })
       }
       if (params.role !== 'admin') {
         const everyone = await links.all({ community_id: params.community_id })
@@ -341,8 +363,9 @@ export default async function handler(req, res) {
       false, so nothing a page can send marks anybody present; and only these columns are
       passed on, which is what keeps a request from writing recorded_by, a session or a
       latitude. A reason may be left out, and an empty one is sent as null rather than as the
-      empty string, because the column's check accepts a null and refuses a word outside its
-      five. Refused: a row that already says present is never turned into an absence. Being
+      empty string; when one is given it is the caller's own wording, kept exactly as typed
+      rather than matched to a list. Refused: a row that already says present is never turned
+      into an absence. Being
       there is a fact about a day that has gone by, and a yes that could be taken back would
       end up recording whoever edited the list rather than who was in the room. A date that has
       not come is allowed — that is the point of the box — because an apology travels ahead of
@@ -351,7 +374,7 @@ export default async function handler(req, res) {
     if (action === 'event' && params.function === 'record') {
       const event_date = String(params.event_date || '').trim()
       const event_name = String(params.event_name || '').trim()
-      // Optional: an empty box writes no reason at all, and a NULL passes the column's check.
+      // Optional: an empty box writes no reason at all, which is recorded as null.
       const reason = String(params.reason || '').trim()
       if (!params.community_id) {
         return res
@@ -362,9 +385,6 @@ export default async function handler(req, res) {
         return res
           .status(400)
           .json({ error: 'params.event_date and params.event_name are required to record an absence' })
-      }
-      if (reason && !REASONS.includes(reason)) {
-        return res.status(400).json({ error: `params.reason is one of ${REASONS.join(', ')}` })
       }
       const link = await links.find(email, params.community_id)
       if (!link) {
@@ -421,7 +441,7 @@ export default async function handler(req, res) {
     */
     if (action === 'member' && params.function === 'create') {
       if (!params.community_id) {
-        return res.status(400).json({ error: 'params.community_id is required to join a community' })
+        return res.status(400).json({ error: 'params.community_id is required to add yourself to a community' })
       }
       const everyone = await links.all({ community_id: params.community_id })
       if (everyone.length) {
@@ -431,10 +451,143 @@ export default async function handler(req, res) {
       }
       params = { ...params, role: 'admin' }
     }
+    /*
+      Opening a check-in session writes two rows: the session itself, and the creator's own
+      attendance at the gathering they just opened — the same shape every member's row will have,
+      their address, a yes, the session it belongs to and the place it was opened from. What the
+      page gets to choose is the PIN it was shown, the two times, which community, what the
+      gathering is called and where the device holding this page is. Everything else is filled in
+      here: `created_by` and the address the attendance row speaks about are the token's, never
+      the body's; `date` is cut out of the start the leader typed rather than promised separately,
+      because a row whose day disagrees with its own start is a row nobody can trust later; and the
+      PIN has to be the four digits this server drew.
+
+      The two coordinates are required, and that is deliberate rather than tidy. They are what a
+      check-in is measured against — the distance from this point is the whole answer to somebody
+      entering a PIN they were told by a friend, or typing one from a different town — so a session
+      with no place is a session that cannot refuse a cheat. The gathering has to be named for the
+      same kind of reason: `event.event_name` is not nullable and is part of what makes an
+      attendance row unique, so an unnamed session could not record anybody at it, its own creator
+      included.
+    */
+    if (action === 'session' && params.function === 'create') {
+      if (!/^\d{4}$/.test(String(params.pin || ''))) {
+        return res
+          .status(400)
+          .json({ error: 'params.pin must be the four digits this server drew' })
+      }
+      const event_name = String(params.event_name || '').trim()
+      if (!event_name) {
+        return res.status(400).json({
+          error: 'params.event_name is required: a session that names no gathering records nobody',
+        })
+      }
+      const started = String(params.started_at || '')
+      const ended = String(params.ended_at || '')
+      const startDate = new Date(started)
+      const endDate = new Date(ended)
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+        return res.status(400).json({
+          error: 'params.started_at and params.ended_at are both needed, as a date with a time',
+        })
+      }
+      if (endDate <= startDate) {
+        return res.status(400).json({ error: 'that session ends before it starts' })
+      }
+      const latitude = Number(params.latitude)
+      const longitude = Number(params.longitude)
+      if (
+        !Number.isFinite(latitude) ||
+        !Number.isFinite(longitude) ||
+        Math.abs(latitude) > 90 ||
+        Math.abs(longitude) > 180
+      ) {
+        return res.status(400).json({
+          error:
+            'params.latitude and params.longitude are both needed, as this device reported them',
+        })
+      }
+      const date = started.slice(0, 10)
+      params = {
+        function: 'create',
+        community_id: params.community_id,
+        pin: String(params.pin),
+        created_by: email,
+        date,
+        started_at: startDate.toISOString(),
+        ended_at: endDate.toISOString(),
+        event_name,
+        latitude,
+        longitude,
+      }
+      /*
+        The attendance row is held back until the session insert answers with its id, which is
+        what ties a yes to the PIN, the window and the place rather than to a day on its own. A
+        reason is cleared rather than left: whoever opened the session is answering for themselves
+        at their own gathering, and any apology they sent for it beforehand is contradicted by the
+        act of running it.
+      */
+      creator = {
+        community_id: params.community_id,
+        event_date: date,
+        event_name,
+        user_email: email,
+        attend: true,
+        reason: null,
+        recorded_by: email,
+        latitude,
+        longitude,
+      }
+    }
+  }
+
+  /*
+    Joining with a code, which is the other way in and the one a person who was told the code
+    uses. Three things are read by the server rather than taken on trust: the community_id comes
+    from the community table matched on those six characters, so the id typed into the same
+    request is dropped; the address is the token's, overwritten above for a browser; and the role
+    is 'member', which Community.join sets and takes from nobody. An empty code and a code
+    nobody holds are both answered the same way and without naming a community, so this is not a
+    way to test a guess against the list of fellowships. The code is the whole credential: the
+    alphabet leaves out the look-alikes and 32^6 combinations is not a number you reach by
+    accident, but anybody who reads one off a screen can walk in as a member.
+  */
+  if (action === 'community' && params.function === 'join') {
+    const join_id = String(params.join_id || '').trim().toUpperCase()
+    if (!join_id) {
+      return res.status(400).json({ error: 'params.join_id is required to join a community' })
+    }
+    const groups = new Community(god.url, god.key)
+    const links = new CommunityMember(god.url, god.key)
+    const one = await groups.byCode(join_id)
+    if (!one) {
+      return res.status(400).json({ error: 'no community carries that join code' })
+    }
+    const link = await links.find(params.email, one.community_id)
+    if (link) {
+      return res
+        .status(400)
+        .json({ error: `you are already in ${one.name}, as ${link.role}` })
+    }
+    params = { ...params, join_id, community_id: one.community_id }
   }
 
   try {
     const data = await god.call(action, params)
+    /*
+      The creator's attendance row follows the session it belongs to, because it points at that
+      row's id. If it cannot be written the session goes back out with the failure: a PIN the room
+      was told, with nobody recorded against it, would be read later as a gathering nobody attended
+      — a worse falsehood than an error on the screen.
+    */
+    if (creator && data?.session_id) {
+      try {
+        await new Event(god.url, god.key).record({ ...creator, session_id: data.session_id })
+      } catch (error) {
+        await new Session(god.url, god.key).remove(data.session_id)
+        throw error
+      }
+    }
     return res.status(200).json({ data })
   } catch (error) {
     const status = error.status || 500

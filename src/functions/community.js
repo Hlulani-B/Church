@@ -72,6 +72,35 @@ export class Community {
     return data
   }
 
+  // The community a typed join code names: id and name only, because the code itself is an
+  // admin's to show and this read must not carry it back out.
+  async byCode(join_id) {
+    if (!join_id) throw new Error('join_id is required')
+    const { data, error } = await this.client
+      .from(TABLE)
+      .select('community_id, name')
+      .eq('join_id', join_id)
+      .maybeSingle()
+    if (error) throw error
+    return data
+  }
+
+  /*
+    The link a code buys: always a plain member, so `role` is not something a caller gets to
+    say here. `community_id` is the one /api/god read off the code, never the one typed into the
+    request alongside it.
+  */
+  async join({ email, community_id }) {
+    if (!email || !community_id) throw new Error('email and community_id are required to join')
+    const { data, error } = await this.client
+      .from('community_members')
+      .insert({ email, community_id, role: 'member' })
+      .select('community_id, role')
+      .single()
+    if (error) throw error
+    return data
+  }
+
   async remove(community_id) {
     this.#id(community_id)
     const { data, error } = await this.client

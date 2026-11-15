@@ -32,7 +32,10 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au .hero h2{font-size:clamp(28px,4vw,42px);line-height:1.2;margin:0 0 14px;max-width:560px}
 .au .hero h2 em{font-style:italic}
 .au .hero p{color:#d0d0d0;max-width:460px;margin:0 0 28px}
+.au .hero .acts{display:flex;flex-wrap:wrap;gap:12px}
 .au .hero .btn{display:inline-block;background:#fff;color:#111;border:0;border-radius:2px;padding:13px 30px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
+.au .hero .btn.ghostly{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.55)}
+.au .hero .btn.ghostly:hover{border-color:#fff}
 
 /* main area */
 .au .main{padding:64px 56px 96px;max-width:1000px;width:100%;margin:0 auto}
@@ -59,6 +62,7 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au .pop label{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 6px}
 .au .pop input{width:100%;border:1px solid var(--line);border-radius:2px;padding:11px 12px;font-size:16px;font-family:inherit;color:var(--text)}
 .au .pop input:focus{outline:2px solid #111;outline-offset:1px}
+.au .pop input.code{letter-spacing:.24em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase}
 .au .pop .fail{color:#a11111;font-size:14px;margin:14px 0 0}
 .au .pop .row{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}
 .au .pop .ghost{background:#fff;color:#111;border:1px solid var(--line);border-radius:2px;padding:11px 20px;font-size:15px;font-family:inherit;cursor:pointer}
@@ -79,14 +83,21 @@ export default function CommunityPage() {
   const [member, setMember] = useState(null);
   const [mine, setMine] = useState([]);
   const [note, setNote] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [popup, setPopup] = useState("");
   const [communityName, setCommunityName] = useState("");
+  const [joinCode, setJoinCode] = useState("");
   const [saving, setSaving] = useState(false);
   const [popupError, setPopupError] = useState("");
 
+  function openPopup(which) {
+    setPopupError("");
+    setPopup(which);
+  }
+
   function closePopup() {
-    setCreating(false);
+    setPopup("");
     setCommunityName("");
+    setJoinCode("");
     setPopupError("");
   }
 
@@ -112,6 +123,31 @@ export default function CommunityPage() {
       setSaving(false);
     }
     communities.getCommunities().then(setMine).catch((error) => setNote(error.message));
+  }
+
+  async function submitJoin(event) {
+    event.preventDefault();
+    const code = joinCode.trim().toUpperCase();
+    if (!code) {
+      setPopupError("Type the join code an admin of that community gave you.");
+      return;
+    }
+    setSaving(true);
+    setPopupError("");
+    try {
+      const joined = await communities.joinCommunity(code);
+      setMine(joined.mine);
+      closePopup();
+      setNote(
+        joined.name
+          ? `You are a member of “${joined.name}” now. Open it below.`
+          : "You are a member of that community now. Open it below.",
+      );
+    } catch (error) {
+      setPopupError(error.message);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function openDashboard(one) {
@@ -154,13 +190,13 @@ export default function CommunityPage() {
   }, []);
 
   useEffect(() => {
-    if (!creating) return undefined;
+    if (!popup) return undefined;
     function onKey(event) {
       if (event.key === "Escape") closePopup();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [creating]);
+  }, [popup]);
 
   if (!signedIn) {
     return (
@@ -196,8 +232,15 @@ export default function CommunityPage() {
       <section className="hero">
         <div className="inner">
           <h2 className="serif">Bring your fellowship <em>together.</em></h2>
-          <p>Create a community to track attendance, understand why people miss, and keep every testimony.</p>
-          <button className="btn" type="button" onClick={() => setCreating(true)}>Create Community</button>
+          <p>Create a community, or join one with a code an admin gave you, to track attendance, understand why people miss, and keep every testimony.</p>
+          <div className="acts">
+            <button className="btn" type="button" onClick={() => openPopup("create")}>
+              Create Community
+            </button>
+            <button className="btn ghostly" type="button" onClick={() => openPopup("join")}>
+              Join Community
+            </button>
+          </div>
         </div>
       </section>
 
@@ -225,7 +268,7 @@ export default function CommunityPage() {
         )}
       </main>
 
-      {creating && (
+      {popup === "create" && (
         <div
           className="veil"
           role="dialog"
@@ -256,6 +299,45 @@ export default function CommunityPage() {
                 </button>
                 <button className="go" type="submit" disabled={saving}>
                   {saving ? "Creating…" : "Create"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {popup === "join" && (
+        <div
+          className="veil"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Join community"
+          onClick={closePopup}
+        >
+          <div className="pop" onClick={(event) => event.stopPropagation()}>
+            <h2 className="serif">Join Community</h2>
+            <p className="lead">
+              An admin of the community shows you its code. You join it as a member, and its
+              attendance and testimonies become yours to read.
+            </p>
+            <form onSubmit={submitJoin}>
+              <label htmlFor="join-code">Join code</label>
+              <input
+                id="join-code"
+                className="code"
+                value={joinCode}
+                onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
+                placeholder="6 characters"
+                maxLength={6}
+                autoFocus
+              />
+              {popupError && <p className="fail">{popupError}</p>}
+              <div className="row">
+                <button className="ghost" type="button" onClick={closePopup}>
+                  Cancel
+                </button>
+                <button className="go" type="submit" disabled={saving}>
+                  {saving ? "Joining…" : "Join"}
                 </button>
               </div>
             </form>

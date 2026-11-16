@@ -93,6 +93,17 @@ export class God {
         if (data.community_id === undefined)
           throw badRequest("params.community_id is required for 'open'")
         return client.open(data)
+      case 'manage':
+        // Session only: what a leader or an admin listens to on their dashboard. The handler
+        // has already put the caller's address and admin flag into data, and settled that they
+        // lead or admin this community, so this read carries PINs to the right eyes and no other.
+        if (data.community_id === undefined)
+          throw badRequest("params.community_id is required for 'manage'")
+        return client.manage(data)
+      case 'revise':
+        // Session only: cancel a check-in or change its radius. Whether the caller may touch
+        // this row is settled in the handler before it gets here; ids() is the session_id.
+        return client.revise(...ids(), changes)
       case 'all':
         return client.all(data)
       case 'memberOf':
@@ -229,7 +240,7 @@ const SELF_ACTIONS = {
   admin: ['roster', 'changeCode', 'assign'],
   attendance: ['services', 'service'],
   event: ['record', 'checkin'],
-  session: ['create', 'pin', 'open'],
+  session: ['create', 'pin', 'open', 'manage', 'revise'],
 }
 // email is the primary key of users, so a browser must never move a row onto
 // someone else's address; everything except these two columns is dropped. community has
@@ -482,20 +493,32 @@ export default async function handler(req, res) {
       /*
         Those four digits are only unique within one day — `unique (community_id, date, pin)` —
         so the same PIN can belong to this Sunday and next, and the window decides which one is
-        being stood in now. The newest start wins if two somehow overlap.
+        being stood in now. A cancelled session is not stood in at all: whoever opened it called it
+        off, and its PIN records nobody from that moment. The newest start wins if two somehow
+        overlap.
       */
       const openings = await new Session(god.url, god.key).all({
         community_id: params.community_id,
         pin,
       })
       const open = openings
-        .filter((one) => new Date(one.started_at) <= now && new Date(one.ended_at) >= now)
+        .filter(
+          (one) =>
+            one.cancel !== true &&
+            new Date(one.started_at) <= now &&
+            new Date(one.ended_at) >= now,
+        )
         .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))[0]
       if (!open) {
         if (!openings.length) {
           return res
             .status(400)
             .json({ error: 'no check-in is open in this community on those four digits' })
+        }
+        if (openings.every((one) => one.cancel === true)) {
+          return res
+            .status(400)
+            .json({ error: 'that check-in was called off, so its PIN no longer records anybody' })
         }
         /*
           No time is quoted here, and that is not laziness: this function runs in UTC and the
@@ -665,6 +688,54 @@ export default async function handler(req, res) {
         now: new Date().toISOString(),
       })
       return res.status(200).json({ data: openings })
+    }
+    /*
+      What the leader and admin dashboards listen to, and the two changes they can make to a
+      check-in. Both are on the leader tier — the block above has already refused a plain member
+      and confirmed this community_id is one the caller leads or admins — but each needs the
+      caller's own address here for a different reason.
+
+      'manage' carries it so the read can mark which rows are the caller's own, and whether they
+      are an admin, which together decide whose PINs come back: only rows they opened, and every
+      row if they admin the community. 'revise' carries it because changing somebody else's
+      check-in — cancelling it, or moving its radius — belongs to whoever opened it, or to an
+      admin who can override any check-in in their community, and to nobody else. The session is
+      read first so that is settled against the row's real creator, not against whatever the
+      page chose to send.
+    */
+    if (action === 'session' && params.function === 'manage') {
+      const link = await links.find(email, params.community_id)
+      params = {
+        function: 'manage',
+        community_id: params.community_id,
+        email,
+        admin: link?.role === 'admin',
+      }
+    }
+    if (action === 'session' && params.function === 'revise') {
+      const session_id = String(params.session_id || '')
+      if (!session_id) {
+        return res.status(400).json({ error: 'params.session_id is required to change a check-in' })
+      }
+      const sessions = new Session(god.url, god.key)
+      const one = await sessions.find(session_id)
+      if (!one || one.community_id !== params.community_id) {
+        return res.status(404).json({ error: 'there is no such check-in in this community' })
+      }
+      const link = await links.find(email, params.community_id)
+      if (one.created_by !== email && link?.role !== 'admin') {
+        return res.status(403).json({
+          error:
+            'only the person who opened a check-in, or an admin of this community, can change it',
+        })
+      }
+      // Only these two moves are open to a dashboard; everything else on the row is fixed at opening.
+      const changes = {}
+      if (params.changes?.cancel === true) changes.cancel = true
+      if (params.changes && Object.prototype.hasOwnProperty.call(params.changes, 'radius')) {
+        changes.radius = params.changes.radius
+      }
+      params = { function: 'revise', session_id, changes }
     }
     /*
       Opening a check-in session writes two rows: the session itself, and the creator's own

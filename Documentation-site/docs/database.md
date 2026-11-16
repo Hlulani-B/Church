@@ -54,6 +54,8 @@ create table session (
   longitude double precision,
   /* what the leader called the gathering this session is for */
   event_name text,
+  /* a check-in called off by whoever opened it, or an admin: it stops counting the moment it is true */
+  cancel boolean not null default false,
   unique (community_id, date, pin)
 );
 
@@ -136,6 +138,21 @@ alter table session enable row level security;
   policies need to be added before they can be read or written.
 - `event` and `testimony` have RLS left off, which means any authenticated
   request can read and write them.
+- `session.cancel` is a plain boolean, defaulted false. It is what the dashboard's **Cancel session**
+  sets, and the one switch that decides whether a check-in counts: a session is only offered for
+  check-in (`Session.open`), only blocks another from opening (`Session.create`'s one-at-a-time
+  lock) and only shows as live on a dashboard while `cancel` is false. Cancelling is one-way — the
+  row keeps its history and is never reopened — so whoever takes the attendance after it is not
+  competing with a ghost. A table that already has rows takes it in one statement, because the
+  default fills every existing row before the `not null` applies:
+
+  ```sql
+  alter table session add column cancel boolean not null default false;
+  ```
+
+  Until that runs, every read and write that touches `cancel` — opening a session, the open/listen
+  poll and the dashboard manage read — fails, so it is the first thing to run against a live
+  database.
 - `event.reason` is a plain nullable text column: the person giving notice writes it in their
   own words, and an empty box leaves it null. It used to carry
   `check (reason in ('Work', 'Transport', 'Sick', 'Family', 'Other'))`, which refused any other

@@ -65,6 +65,31 @@ export class SessionFetch {
   }
 
   /*
+    What the leader and admin dashboards listen to on a timer: every check-in in this community
+    that has not yet ended, each with its window, radius and whether it was cancelled, marked as
+    mine or someone else's. Unlike the member's open-sessions poll this answers to the leader tier,
+    because it carries the PIN — but only for the rows the caller opened, and for every row when
+    they are an admin, so a second leader cannot read digits off a gathering they are not running.
+  */
+  async manageSessions({ community_id }) {
+    return callGod('session', { function: 'manage', community_id })
+  }
+
+  /*
+    The two changes a dashboard makes to a check-in it manages: call it off, or widen and narrow
+    the distance it takes arrivals from. Only the one who opened a session, or an admin of the
+    community, is allowed to make them, and /api/god settles that against the row itself rather
+    than trusting this page. Cancelling is one-way and carries no undo; a radius of null means no
+    distance limit at all.
+  */
+  async reviseSession({ community_id, session_id, radius, cancel }) {
+    const changes = {}
+    if (cancel === true) changes.cancel = true
+    if (radius !== undefined) changes.radius = radius
+    return callGod('session', { function: 'revise', community_id, session_id, changes })
+  }
+
+  /*
     The member's own arrival, said as four digits. Nothing else about the check-in is asserted
     here: which gathering the PIN names, what day it is, whether the window holds, how far the
     phone is standing from where the session was opened and what time it is all come back from

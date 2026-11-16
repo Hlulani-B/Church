@@ -172,7 +172,7 @@ export default function TakeAttendancePage() {
     setBusy(true);
     setError("");
     try {
-      const row = await sessions.openSession({
+      await sessions.openSession({
         community_id: communityId,
         pin,
         event_name: name.trim(),
@@ -183,7 +183,14 @@ export default function TakeAttendancePage() {
         radius: radius.trim() === "" ? null : metres,
         allow_any_radius: anywhere,
       });
-      setOpen(row);
+      /*
+        The session is open, so this page has done its one job and leaves. Back on the dashboard the
+        room is watched from here on: it listens for the check-in just opened, shows its PIN to be
+        read out, and lets it be cancelled or its radius changed. Going back — rather than parking
+        a confirmation here — returns whoever opened it to the page that keeps listening.
+      */
+      navigate(-1);
+      return;
     } catch (cause) {
       setError(cause.message);
     } finally {

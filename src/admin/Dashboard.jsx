@@ -5,6 +5,7 @@ import { AdminDashboardFetch, ROLES } from "../page_functions/admin_dashboard.js
 import AdminMenu from "./menu.jsx";
 import BackToCommunities from "../components/back.jsx";
 import CheckIn from "../components/checkin.jsx";
+import AttendanceControl from "../components/attendance_control.jsx";
 import { adminState, rememberAdmin } from "./state.js";
 
 const accounts = new Auth();
@@ -623,7 +624,8 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* An admin is stood in the room too, and is not always the one who opened the session. */}
+        {/* An admin is stood in the room too, and can override any check-in in their community. */}
+        {communityId && <AttendanceControl community_id={communityId} admin />}
         {communityId && <CheckIn community_id={communityId} email={admin.email} />}
       </main>
 

@@ -183,4 +183,5 @@ alter table session enable row level security;
 - Reads of `users`, `community` and `community_members` only return rows when the query
   runs on the service-role key. `new User()` defaults to `SUPABASE_ANON_KEY` and gets
   zero rows back from these RLS-protected tables; `new God()` passes the service key to
-  every class, which is why page data arrives through `/api/god` and not directly.
+  every class, which is why page data arrives through `/api/self`, `/api/leader` or `/api/admin`
+  and not directly.

@@ -12,7 +12,7 @@ export class UserFetch {
   }
 
   /*
-    Only name and surname survive: api/god.js filters changes down to SELF_FIELDS, and
+    Only name and surname survive: api/self.js filters changes down to SELF_FIELDS, and
     users.email is the primary key that links attendance and testimonies to a person, so
     a browser cannot move its row onto someone else's address.
   */

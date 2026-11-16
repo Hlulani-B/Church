@@ -1,7 +1,7 @@
 import { callGod } from './god.js'
 
 // Page fetches for the admin dashboard. One file per area lives in this folder, and the
-// JSX only ever calls these — never Supabase, never /api/god by hand.
+// JSX only ever calls these — never Supabase, never an /api function by hand.
 
 /*
   The three roles the dashboard can put somebody in, each with the line that says what it is
@@ -26,7 +26,7 @@ export class AdminDashboardFetch {
   /*
     God's `admin` `roster`, which joins community_members to users for one community and
     answers [{ email, name, surname, role }] — admins first, then leaders, then members.
-    /api/god only answers this for a leader or an admin of that community, and it reads the
+    /api/leader only answers this for a leader or an admin of that community, and it reads the
     caller's role off the id token rather than anything in this request. A leader reads the
     list; the role in it is only ever written by an admin.
   */
@@ -37,7 +37,7 @@ export class AdminDashboardFetch {
   /*
     The one community being administered: { community_id, name, join_id }. The name goes
     in the heading so the page can say which group the list below belongs to, and the
-    join_id is the code people type to find it. /api/god answers this for an admin of
+    join_id is the code people type to find it. /api/admin answers this for an admin of
     that community_id and for nobody else.
   */
   async getCommunity(community_id) {
@@ -49,7 +49,7 @@ export class AdminDashboardFetch {
     two belong in one function rather than left to whoever calls them. The removal only
     unlinks them — their attendance rows and testimonies stay recorded against their
     address — and the rotation is what stops somebody who had memorised the code from
-    typing their way back in. /api/god answers both only for an admin of this community,
+    typing their way back in. /api/admin answers both only for an admin of this community,
     refuses to let one admin delete another, and refuses to empty the community entirely.
     The community row comes back, so the page can show the new code beside the sentence
     saying it changed.
@@ -61,7 +61,7 @@ export class AdminDashboardFetch {
 
   /*
     Puts one person in this community in a different role: 'member', 'leader' or 'admin'.
-    Nothing about the write is decided here. /api/god takes the caller's address off their id
+    Nothing about the write is decided here. /api/admin takes the caller's address off their id
     token, refuses anybody who is not an admin of this community, refuses an address that has
     no link in it, and refuses the one change a community cannot survive — its only admin
     giving the role up. The updated link comes back, so the screen says what the row holds
@@ -73,7 +73,7 @@ export class AdminDashboardFetch {
 
   /*
     Replaces the code with one the server drew: nothing is typed, and nothing about the
-    new code comes from this browser. /api/god checks the drawn code against every
+    new code comes from this browser. /api/admin checks the drawn code against every
     community and draws again until no row holds it, so the code is free the moment it is
     written. The whole row comes back, because the name belongs in the sentence that says
     the code has changed.

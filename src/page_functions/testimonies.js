@@ -5,13 +5,13 @@ import { downloadExcel, downloadPdf } from './testimony_files.js'
 /*
   Testimonies are read by the browser itself, from the values Vite inlines out of
   .env.local: VITE_SUPABASE_URL and the public VITE_SUPABASE_ANON_KEY. Nothing here goes
-  through /api/god, so there is no id token, no action name and no server class behind the
+  through the /api functions, so there is no id token, no action name and no server class behind the
   rows — what that costs is written out in Documentation-site/docs/findings.md, finding 1.
 
   What this read cannot give is a name. `users` has row level security and answers the anon
   key with nothing at all, so a join for the person who shared comes back empty. The names come
-  from the roster instead: that read does go through /api/god, which answers it for an admin of
-  this community and for nobody else. So the page has both halves, the rows from here and the
+  from the roster instead: that read does go through /api/leader, which answers it for a leader or
+  an admin of this community and for nobody else. So the page has both halves, the rows from here and the
   names from there, and they are joined in this file rather than in a query the browser is not
   allowed to run. A search by name works the same way round — the word is matched against the
   roster, and the testimonies are then narrowed to the addresses it picked out.
@@ -100,8 +100,8 @@ export class TestimoniesFetch {
   }
 
   /*
-    The roster is the second read, on the other path: /api/god answers it for an admin of this
-    community and for nobody else. It is the only place names live, so without it a search by
+    The roster is the second read, on the other path: /api/leader answers it for a leader or an
+    admin of this community and for nobody else. It is the only place names live, so without it a search by
     name cannot be answered at all and says so, rather than handing back every testimony as if
     the word had matched. Names on the rows are lost with it, but the sharing itself still
     shows, titled by address.

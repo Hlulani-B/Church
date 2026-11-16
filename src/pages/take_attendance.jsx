@@ -139,7 +139,7 @@ export default function TakeAttendancePage() {
   /*
     What leaves this page is the PIN it was shown, the gathering's name, the two times, how near
     the room a check-in will be taken from, which community and the numbers the device reported.
-    It is not asked who was there: /api/god takes the creator's own attendance from the token, and
+    It is not asked who was there: /api/leader takes the creator's own attendance from the token, and
     nobody else's from anywhere, so a room full of people is not entered by one leader's keyboard.
   */
   async function save(event) {

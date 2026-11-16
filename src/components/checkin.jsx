@@ -102,7 +102,7 @@ export default function CheckIn({ community_id, email }) {
     What leaves here is four digits, which community and the two numbers this device reported at
     the moment the button was pressed. Which gathering those digits name, what day it is, whether
     the window still holds, how near the room this phone is standing and what time it is all come
-    back from /api/god, which reads them off the session row and its own clock rather than off
+    back from /api/self, which reads them off the session row and its own clock rather than off
     anything typed into this box.
   */
   async function checkIn(event) {

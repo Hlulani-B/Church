@@ -53,7 +53,7 @@ function reach(one) {
 
   Everything here is a mirror of what the server already allows. The manage controls show for a row
   this caller opened, or for any row when they are an admin of the community; the PIN only reaches
-  them when the server chose to send it. The buttons call the same guarded /api/god that would
+  them when the server chose to send it. The buttons call the same guarded /api/leader that would
   refuse the change anyway, so a stale screen can do nothing it was not entitled to.
 */
 const css = `

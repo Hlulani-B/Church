@@ -11,7 +11,7 @@ const accounts = new Auth();
 /*
   The same page the admin dashboard opens, and the same fetch behind it: this list is read
   straight from Supabase with the publishable key and row level security, so nothing here
-  asks /api/god about other people. A leader therefore sees exactly what an admin sees —
+  asks an /api function about other people. A leader therefore sees exactly what an admin sees —
   the sharing of this community — and the only thing they write is their own testimony,
   against their own address, which is what a member is allowed to do anyway.
 */

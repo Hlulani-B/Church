@@ -1,12 +1,12 @@
 /*
-  Temporary check of the session create path in api/god.js. Nothing here reaches the real
+  Temporary check of the session create path in api/leader.js. Nothing here reaches the real
   project: the Supabase url points at a local server that answers PostgREST-shaped JSON, and
   the Firebase id token is minted from a throwaway RSA key served by a stubbed signing-key
   endpoint.
 */
 import { createServer } from 'node:http'
 import { generateKeyPairSync, createPrivateKey, sign } from 'node:crypto'
-import handler from './api/god.js'
+import handler from './api/leader.js'
 
 const project = 'kopano-local-check'
 const { publicKey, privateKey } = generateKeyPairSync('rsa', {
@@ -137,8 +137,8 @@ const check = (label, ok, detail) => report.push({ label, ok, detail })
 
 rows = []
 const happy = await ask(good)
-const session = rows.find((one) => one.table === 'session')
-const gathering = rows.find((one) => one.table === 'event')
+const session = rows.find((one) => one.method === 'POST' && one.table === 'session')
+const gathering = rows.find((one) => one.method === 'POST' && one.table === 'event')
 check('a leader opens a session', happy.status === 200, happy.status)
 check(
   'the session row keeps the name and the place',

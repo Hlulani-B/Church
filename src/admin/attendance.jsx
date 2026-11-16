@@ -108,7 +108,7 @@ export default function AdminAttendance() {
     `refresh` is what makes the list read itself again once a notice is written, so the new row
     turns up in its gathering without a reload.
   */
-  const [absence, setAbsence] = useState({ date: today(), name: "", reason: "" });
+  const [absence, setAbsence] = useState({ date: today(), reason: "" });
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState("");
   const [refresh, setRefresh] = useState(0);
@@ -188,37 +188,36 @@ export default function AdminAttendance() {
   }, [email, communityId, chosen]);
 
   /*
-    Three boxes are typed and none of them is whether somebody came. The answer is always not
-    attending and the address is whoever is signed in, both forced by /api/god rather than
-    trusted from this form, which is why there is no Attending box to click. A day that has not
-    come is the expected case: an apology reaches the list before the gathering does. Writing
-    the same notice twice only replaces the reason, because there is one row per person per
-    gathering — and a gathering you are already recorded as being at refuses this write
-    outright, so a yes cannot be talked back into a no.
+    Two boxes are typed and neither is whether somebody came, nor which gathering: the name is read
+    back off the session opened for that day. The answer is always not attending and the address is
+    whoever is signed in, both forced by /api/self rather than trusted from this form, which is why
+    there is no Attending box to click. A day that has not come is the expected case: an apology
+    reaches the list before the gathering does. Writing the same notice twice only replaces the
+    reason, because there is one row per person per gathering — and a gathering you are already
+    recorded as being at refuses this write outright, so a yes cannot be talked back into a no.
   */
   async function recordAbsence(event) {
     event.preventDefault();
-    const name = absence.name.trim();
-    if (!absence.date || !name) {
+    if (!absence.date) {
       setNote("");
-      setNoticeError("A day and a gathering: both are needed to record an absence.");
+      setNoticeError("A day is needed to record an absence.");
       return;
     }
     setSaving(true);
     setNoticeError("");
     try {
-      await attendance.markNotAttending({
+      const saved = await attendance.markNotAttending({
         community_id: communityId,
         event_date: absence.date,
-        event_name: name,
         reason: absence.reason,
       });
+      const derived = saved?.event_name || "the gathering";
       setNote(
         absence.reason.trim()
-          ? `You are recorded as not attending ${name} on ${pretty(absence.date)} — ${absence.reason.trim()}.`
-          : `You are recorded as not attending ${name} on ${pretty(absence.date)}.`,
+          ? `You are recorded as not attending ${derived} on ${pretty(absence.date)} — ${absence.reason.trim()}.`
+          : `You are recorded as not attending ${derived} on ${pretty(absence.date)}.`,
       );
-      setAbsence({ date: today(), name: "", reason: "" });
+      setAbsence({ date: today(), reason: "" });
       setRefresh((count) => count + 1);
     } catch (e) {
       setNote("");
@@ -276,10 +275,11 @@ export default function AdminAttendance() {
             <p className="what">Not attending</p>
             <p className="why">
               Record that you will not be at a gathering, including one whose day has not come
-              yet. A reason is optional, and when you give one it is in your own words — the box
-              offers the usual five, and takes anything you type. This writes not attending only
-              — nothing here marks
-              anybody present, and a gathering you are recorded as being at keeps that record.
+              yet. The gathering itself is the one the leader has opened a session for on that day,
+              so you only choose the day. A reason is optional, and when you give one it is in your
+              own words — the box offers the usual five, and takes anything you type. This writes
+              not attending only — nothing here marks anybody present, and a gathering you are
+              recorded as being at keeps that record.
             </p>
             <div className="fields">
               <label>
@@ -288,15 +288,6 @@ export default function AdminAttendance() {
                   type="date"
                   value={absence.date}
                   onChange={(event) => setAbsence({ ...absence, date: event.target.value })}
-                />
-              </label>
-              <label>
-                Gathering
-                <input
-                  type="text"
-                  value={absence.name}
-                  placeholder="Sunday Fellowship"
-                  onChange={(event) => setAbsence({ ...absence, name: event.target.value })}
                 />
               </label>
               <label>

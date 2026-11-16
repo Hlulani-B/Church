@@ -8,7 +8,7 @@ Those are two separate systems, and the pages below describe how they meet.
 | Account, password, session | Firebase Auth (`kopano-a0554`) | `src/firebase.js`, `src/functions/auth.js` |
 | Person record, name, surname | Supabase `users` | `src/functions/user.js` |
 | Role in a community | Supabase `community_members` | `src/functions/community_members.js` |
-| Attendance | Supabase `event` | `src/functions/attendance.js`, read through `/api/god` |
+| Attendance | Supabase `event` | `src/functions/attendance.js`, read through `/api/leader` |
 | Testimonies | Supabase `testimony` | `src/page_functions/testimonies.js`, read by the browser itself |
 
 ## Status: enabled, and wired to the pages
@@ -29,18 +29,18 @@ message with a link to create an account instead of redirecting there.
 | Route | Page | What it does |
 | --- | --- | --- |
 | `/login` | `src/pages/login.jsx` | Firebase sign-in and Google sign-in; no email-verification gate; a visitor who still holds a session goes straight to `/community` |
-| `/signup` | `src/pages/create_account.jsx` | Creates the account, then the `users` row through `/api/god`, then on to `/community` |
+| `/signup` | `src/pages/create_account.jsx` | Creates the account, then the `users` row through `/api/self`, then on to `/community` |
 | `/forgot-password` | `src/pages/forgot_password.jsx` | `sendPasswordResetEmail`, with a resend button |
 | `/terms` | `src/pages/TCs.jsx` | The policy text, linked from the agree checkbox on `/signup` |
 | `/community` | `src/pages/community.jsx` | The signed-in home page: greets the visitor from their own `users` row, lists their communities and opens new ones from a popup |
-| `/profile` | `src/pages/profile.jsx` | Changes **name and surname only**, through `/api/god` `user` `update` |
+| `/profile` | `src/pages/profile.jsx` | Changes **name and surname only**, through `/api/self` `user` `update` |
 | `/admin-dashboard` | `src/admin/Dashboard.jsx` | Headed **Admin**, the community's name and the signed-in address, over the roster of that community — name, surname and role from `users` joined onto `community_members`, with no address in the table but the caller's own, in the heading — searchable by name or surname, with that community's join code beside it to copy or draw again, and a ⋮ menu on every row but the signed-in one to put that person in another role or remove them |
 | `/admin-attendance` | `src/admin/attendance.jsx` | Every gathering this community has recorded, newest first, with how many of its rows were present; pressing one lists everyone recorded at it, present and absent, by name. At the top is the page's one write: a notice that whoever is signed in will not be at a gathering, whose day may not have come yet, with a reason written in their own words and offered the usual five as suggestions, which they may leave blank |
 | `/admin-testimonies` | `src/admin/testimonies.jsx` | The community's testimonies, newest first, a hundred at a time, searched by date and by name — read by the browser straight from Supabase, which is why the names on those rows come from the roster rather than from a join |
 | `/leader-dashboard` | `src/leader/Dashboard.jsx` | Headed **Leader**, the same roster read, in the same table and behind the same search box — and that is the whole page: no ⋮ menu on any row, so there is nothing here to give a role or take anybody out, and no join code, because this page never asks for the community row that carries it |
 | `/leader-attendance` | `src/leader/attendance.jsx` | The same gatherings and the same per-gathering list the admin page shows, read-only — with the same notice at the top, because writing that one is what a member does about their own attendance, and a leader is a member first |
 | `/leader-testimonies` | `src/leader/testimonies.jsx` | The same testimony list, search and exports, including writing **their own** testimony — which is what a member does, and a leader is a member first |
-| `/member-dashboard` | `src/member/Dashboard.jsx` | Placeholder member screen, reached by opening a community you belong to |
+| `/member-dashboard` | `src/member/Dashboard.jsx` | The member's own screen, reached by opening a community you belong to: a notice that you will not be at the day's gathering (whose name the server reads back off the session, not a box you type), the check-in box that appears only while a session's window is open, and a standing read-only notice of what is live or scheduled in the fellowship |
 
 `/community` is the page every successful sign-in lands on, from both `/login` and
 `/signup`. It greets the visitor from their own `users` row and lists the communities
@@ -61,7 +61,7 @@ admin dashboard of that community shows beside its roster.
 
 Clicking a community card sends the visitor to the dashboard for their role in **that**
 community. `CommunityFetch.navigateTo(community, email, navigate)` takes the whole card,
-reads the `community_members` row for it through `/api/god` `member` `find`, then maps the
+reads the `community_members` row for it through `/api/self` `member` `find`, then maps the
 role — `admin` to `/admin-dashboard`, `leader` to `/leader-dashboard`, `member` to
 `/member-dashboard` — and puts `{ community_id, name, email }` in the route state on the
 way. Every screen behind that card is opened with the same three values, which
@@ -69,7 +69,7 @@ way. Every screen behind that card is opened with the same three values, which
 dashboard reads the id and does nothing else with it: `AdminDashboardFetch` in
 `src/page_functions/admin_dashboard.js` answers the roster with `getMembers(community_id)`
 and the name and code with `getCommunity(community_id)`, and `changeJoinCode(community_id)`
-asks `/api/god` `admin` `changeCode` for a brand new code — the button on the page is
+asks `/api/admin` `admin` `changeCode` for a brand new code — the button on the page is
 the only way to change it, there is no field to type into. Every roster row carries a ⋮
 menu with **Assign role** and **Remove member** — except the row holding the signed-in
 address itself, which carries nothing: this page changes other people, and it is neither how
@@ -96,7 +96,7 @@ of the roster, and it drops below the list on a narrow one. The leader dashboard
 `src/leader/Dashboard.jsx`, lays the same roster out without either of those two things: no
 ⋮ menu, and no code, because fetching the community row is what carries the code and a
 leader has no use for it. The heading comes from the card that was clicked, the same three
-values every other screen is opened with. `src/member/Dashboard.jsx` is still a placeholder.
+values every other screen is opened with.
 All three wait for the session the way the other signed-in pages do, and none of them sends
 anybody to `/login` on its own. Two things keep the destination honest: the server answers
 `member` `find` with the address on the caller's
@@ -135,7 +135,9 @@ in `src/admin/state.js`, and each set wears the same heading: **Admin**, or **Le
 the community's name and the address. Each page hands that object to its menu unchanged and
 hands the same
 one to any link it makes itself, so moving between the three carries the community id and
-the address with you. `adminState` takes what the page has just read first, the route second
+the address with you. `src/member/Dashboard.jsx` is no longer a placeholder: it is the member's
+own screen — the not-attending notice, the PIN check-in box, and a read-only notice of the
+community's live and scheduled check-ins. `adminState` takes what the page has just read first, the route second
 and what this browser last opened third — known beats linked beats remembered — so a screen
 still knows which community it is on when a link arrives empty. `rememberAdmin` writes that
 object down from every screen, which is what makes a reload, a bookmark and the back button
@@ -159,22 +161,26 @@ the roster and join code of a community, `attendance.js` for its gatherings — 
 those goes through
 `callGod(action, params)` in `src/page_functions/god.js`, which waits for `ready`, signs the
 request with the caller's Firebase ID token from `getIdToken(auth.currentUser)` and posts it
-to `/api/god`, where `God.call()` runs on the server. Nobody settles into a signed-out
+to the endpoint whose auth tier owns the call — `/api/self`, `/api/leader` or `/api/admin` —
+where `God.call()` in `lib/god.js` runs on the server. Nobody settles into a signed-out
 visitor, so that first read of the session cannot be the slow one, and a request made while
 signed out stops as `You are signed out, so this could not be loaded.` rather than as
 `Cannot read properties of null (reading 'getIdToken')`. A page fetches from a listener that
 has reported a person (see below), never from a mount effect that runs while the session is
 still unknown — which is what made `/admin-dashboard` show that error. A new page read is a new method in the matching
-`src/page_functions/` file, never a raw fetch written inside a page. That token is what
-`api/god.js` verifies. A browser token is held to `SELF_ACTIONS` — `user` `find`, `create`
-and `update`, `community` `memberOf`, `create` and `find`, `member` `find`, `create` and
-`remove`, `admin` `roster`, `changeCode` and `assign`, `attendance` `services` and
-`service`, and `event` `record` — and the email
+`src/page_functions/` file, never a raw fetch written inside a page. That token is what the
+endpoint verifies. A browser token is held to the whitelist of whichever door it knocked on —
+**self**: `user` `find`/`create`/`update`, `community` `memberOf`/`create`/`join`, `member`
+`find`/`create`, `event` `record`/`checkin`, `session` `open`/`live`; **leader**: `attendance`
+`services`/`service`, `admin` `roster`, `session` `create`/`pin`/`manage`/`revise`; **admin**:
+`admin` `changeCode`/`assign`, `member` `remove`, `community` `find` — and the email
 is taken from the token rather than the
 body, so a member can only ever list the communities they belong to and read the role they
-hold in one. That allowlist says only that a browser may ask; a second test says who may be
-answered, and it is settled by the role in `community_members` for the `community_id` in the
-request — see below.
+hold in one. That allowlist says only that a browser may ask — and which door it may knock on;
+a second test says who may be
+answered, and it is settled by `roleGate` against the role in `community_members` for the
+`community_id` in the request — a leader-tier call wants `leader` or `admin`, an admin-tier call
+only `admin` — see below.
 `member` `create` is checked further: the server reads `community_members` for that
 `community_id` and refuses the write once the group has any members, and it overwrites
 `role` with `admin`, so a browser can attach itself only to a community it has just opened,
@@ -246,19 +252,25 @@ it returns carries `join_id`, and the code is an admin's to show. So a leader of
 is refused an admin of another everything, and a leader is refused a change in their own. The
 lookup cannot be
 argued with: `params.email` is overwritten with the token address before it happens, and
-those requests take a `community_id` rather than an email anyway. `session` stays a plain
-table action, reachable only with `GOD_SERVER_KEY`. `event` opened exactly one write to a
+those requests take a `community_id` rather than an email anyway. `session` splits across the two
+doors: `create`/`pin`/`manage`/`revise` sit on the leader tier behind the same `roleGate`, while
+`open`/`live` sit on the self tier and ask only that the caller be a member of that community.
+`event` opened exactly one write to a
 browser — `record`, the not-attending notice at the top of both attendance pages — and because
 it describes the caller rather than anybody else it is not gated on the leader or admin tier:
 any role's link in that `community_id` answers it, since a leader or an admin is a member
-first. What the request cannot decide is the address (the token's), the answer (always `false`)
-or the columns (the six a notice types, so a `recorded_by`, a `session_id` or a latitude in the
+first. What the request cannot decide is the address (the token's), the answer (always `false`) or
+the gathering — `event` `record` now reads that name back off the session opened for the day, so a
+day with no session, or with more than one, is refused rather than guessed, and there is no gathering
+box on the page any more — or
+the columns (so a `recorded_by`, a `session_id` or a latitude in the
 body is dropped); a reason may be left out, which stores `null`, and when one is given it is the
 caller's own wording — the function no longer matches it against the five, so the only thing that
 can still refuse a phrase is the column's own check constraint, which
 `Documentation-site/docs/database.md` documents as dropped. The one refusal is a gathering already
-recorded as present: a yes is never taken back. The `testimony` action left
-`api/god.js` along with `src/functions/testimony.js` when that page started reading the table
+recorded as present: a yes is never taken back. The `testimony` action left the old `api/god.js`
+monolith (since split into `api/self.js`, `api/leader.js` and `api/admin.js`) along with
+`src/functions/testimony.js` when that page started reading the table
 itself; the only server call it makes now is the `roster` one above, which the leader tier
 opens as well.
 

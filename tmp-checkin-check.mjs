@@ -38,7 +38,14 @@ const fb = async (path, body, token) => {
   return { status: res.status, json: await res.json().catch(() => ({})) };
 };
 const god = async (action, params, token) => {
-  const res = await fetch(`${APP}/api/god`, {
+  // god.js was split into three endpoints by auth tier; this mirrors how callGod picks the door.
+  const door =
+    { user: 'self', attendance: 'leader', event: 'self' }[action] ||
+    (action === 'community' ? (params.function === 'find' ? 'admin' : 'self') : null) ||
+    (action === 'member' ? (params.function === 'remove' ? 'admin' : 'self') : null) ||
+    (action === 'admin' ? (params.function === 'roster' ? 'leader' : 'admin') : null) ||
+    (action === 'session' ? (params.function === 'open' ? 'self' : 'leader') : null);
+  const res = await fetch(`${APP}/api/${door}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     body: JSON.stringify({ action, params }),

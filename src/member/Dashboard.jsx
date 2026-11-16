@@ -5,6 +5,7 @@ import { AttendanceFetch, REASONS } from "../page_functions/attendance.js";
 import Menu from "../components/menu.jsx";
 import BackToCommunities from "../components/back.jsx";
 import CheckIn from "../components/checkin.jsx";
+import SessionLive from "../components/session_live.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
 const accounts = new Auth();
@@ -86,11 +87,12 @@ export default function MemberDashboard() {
   const [signedIn, setSignedIn] = useState(null);
   const [noSession, setNoSession] = useState(false);
   /*
-    The notice: a day, a gathering, a reason. Whether the person came is not one of the boxes —
-    this form only ever writes not attending, to whoever it says, and the presence a member can
-    claim is the PIN box below it, which speaks for this sign-in and nobody else's.
+    The notice: a day and a reason. The gathering it speaks about is not typed here — it is named
+    by the session the leader opens for that day, and read back off the server. Whether the person
+    came is not one of the boxes either: this form only ever writes not attending, and the presence
+    a member can claim is the PIN box below it, which speaks for this sign-in and nobody else's.
   */
-  const [absence, setAbsence] = useState({ date: today(), name: "", reason: "" });
+  const [absence, setAbsence] = useState({ date: today(), reason: "" });
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState("");
   // The notice keeps its own refusal, so a failed write does not hide the box that made it.
@@ -117,35 +119,35 @@ export default function MemberDashboard() {
   }, []);
 
   /*
-    Three boxes are typed and none of them is whether anybody came. The address written against
-    the notice is the one on the caller's own id token, forced by /api/god, and the role of the
-    person typing is not checked at all: a notice is a member's own business. Writing the same
-    notice twice only replaces the reason, because there is one row per person per gathering,
-    and a gathering the member is already recorded as being at refuses the write outright.
+    Two boxes are typed — a day and, if wanted, a reason — and neither is whether anybody came, nor
+    which gathering: the name is read back off the session opened for that day. The address written
+    against the notice is the one on the caller's own id token, forced by /api/self, and the role of
+    the person typing is not checked at all: a notice is a member's own business. Writing the same
+    notice twice only replaces the reason, because there is one row per person per gathering, and a
+    gathering the member is already recorded as being at refuses the write outright.
   */
   async function recordAbsence(event) {
     event.preventDefault();
-    const name = absence.name.trim();
-    if (!absence.date || !name) {
+    if (!absence.date) {
       setNote("");
-      setNoticeError("A day and a gathering: both are needed to record an absence.");
+      setNoticeError("A day is needed to record an absence.");
       return;
     }
     setSaving(true);
     setNoticeError("");
     try {
-      await attendance.markNotAttending({
+      const saved = await attendance.markNotAttending({
         community_id: communityId,
         event_date: absence.date,
-        event_name: name,
         reason: absence.reason,
       });
+      const derived = saved?.event_name || "the gathering";
       setNote(
         absence.reason.trim()
-          ? `You are recorded as not attending ${name} on ${pretty(absence.date)} — ${absence.reason.trim()}.`
-          : `You are recorded as not attending ${name} on ${pretty(absence.date)}.`,
+          ? `You are recorded as not attending ${derived} on ${pretty(absence.date)} — ${absence.reason.trim()}.`
+          : `You are recorded as not attending ${derived} on ${pretty(absence.date)}.`,
       );
-      setAbsence({ date: today(), name: "", reason: "" });
+      setAbsence({ date: today(), reason: "" });
     } catch (e) {
       setNote("");
       setNoticeError(e.message);
@@ -200,6 +202,8 @@ export default function MemberDashboard() {
           </div>
         )}
 
+        {communityId && <SessionLive community_id={communityId} />}
+
         {!communityId ? (
           <div className="note">
             No community was chosen, so there is nothing to open here. Go back, click a community,
@@ -210,10 +214,11 @@ export default function MemberDashboard() {
             <p className="what">Not attending</p>
             <p className="why">
               Record that you will not be at a gathering, including one whose day has not come
-              yet. A reason is optional, and when you give one it is in your own words — the box
-              offers the usual five, and takes anything you type. This is your own notice: coming
-              is said with the four digits below rather than here, and a gathering you are
-              recorded as being at keeps that record.
+              yet. The gathering itself is the one the leader has opened a session for on that day,
+              so you only choose the day. A reason is optional, and when you give one it is in your
+              own words — the box offers the usual five, and takes anything you type. This is your
+              own notice: coming is said with the four digits below rather than here, and a
+              gathering you are recorded as being at keeps that record.
             </p>
             <div className="fields">
               <label>
@@ -222,15 +227,6 @@ export default function MemberDashboard() {
                   type="date"
                   value={absence.date}
                   onChange={(event) => setAbsence({ ...absence, date: event.target.value })}
-                />
-              </label>
-              <label>
-                Gathering
-                <input
-                  type="text"
-                  value={absence.name}
-                  placeholder="Sunday Fellowship"
-                  onChange={(event) => setAbsence({ ...absence, name: event.target.value })}
                 />
               </label>
               <label>

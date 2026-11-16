@@ -54,7 +54,8 @@ row level security, so per-user policies are not available to you today unless t
 requests carry a Supabase session token.
 
 **Changed 2026-11-14.** `/admin-testimonies` reads that table from the browser itself, on
-`VITE_SUPABASE_ANON_KEY` — the key this finding is about — rather than through `/api/god`.
+`VITE_SUPABASE_ANON_KEY` — the key this finding is about — rather than through the `/api`
+functions.
 So a visitor no longer has to write the request by hand: the app puts the key in their
 bundle and makes the call for them. `event` is not read this way, because the attendance
 page needs the names in `users`, and a browser on the anon key cannot see them.
@@ -67,7 +68,7 @@ export it writes is a browser read of a table anybody can read — and since the
 add button, so is the write: an `insert` and a `delete` on `testimony` were both accepted by
 this key while checking that button. It is also why the names in an
 export cannot come from that read: a join to `users` on the anon key answers zero rows, so the
-names are asked for separately through `admin` `roster` on `/api/god`.
+names are asked for separately through `admin` `roster` on `/api/leader`.
 
 ## 2. `event` queries silently truncate at 1000 rows
 
@@ -132,7 +133,9 @@ up while testing them:
 Found 2026-11-14. Every new sign-up failed with `401 that sign-in is not valid`, so no
 browser could ever write its own `users` row.
 
-**Cause.** The token parser in `api/god.js` destructured a `map` over all three JWT
+**Cause.** The token parser in the old `api/god.js` monolith (since split into `api/self.js`,
+`api/leader.js` and `api/admin.js`, its shared checks now in `lib/god.js`) destructured a `map`
+over all three JWT
 segments:
 
 ```js

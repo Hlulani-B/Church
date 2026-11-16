@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js'
   most 1000 of them in one read (findings.md #2). Both methods here are shaped around that
   rather than pretending it does not happen: services() groups the newest 1000 rows into
   gatherings, and service() asks for a single gathering, which is never bigger than the
-  roster. /api/god maps the action 'attendance' onto this class and answers it for a leader
+  roster. /api/leader maps the action 'attendance' onto this class and answers it for a leader
   or an admin of the community_id in the request.
 
   The name beside each address comes from the join to users, which row level security keeps

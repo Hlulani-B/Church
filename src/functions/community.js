@@ -87,7 +87,7 @@ export class Community {
 
   /*
     The link a code buys: always a plain member, so `role` is not something a caller gets to
-    say here. `community_id` is the one /api/god read off the code, never the one typed into the
+    say here. `community_id` is the one /api/self read off the code, never the one typed into the
     request alongside it.
   */
   async join({ email, community_id }) {

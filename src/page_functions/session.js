@@ -26,7 +26,7 @@ export class SessionFetch {
     sends the PIN it was shown, the two times, which community, the name of the gathering, how
     near the room a check-in has to come from and the place the leader's device reported; the
     address recorded as `created_by`, the day the row carries and the shape of the PIN are all
-    filled in by /api/god, from the caller's own id token in the first case. Marking anybody else
+    filled in by /api/leader, from the caller's own id token in the first case. Marking anybody else
     present is not part of opening a session, and no page can ask for it.
   */
   async openSession({
@@ -57,11 +57,22 @@ export class SessionFetch {
   /*
     What could be checked in to in this community right now, as the gatherings whose window holds.
     The answer carries a name, two times and whether a distance will be asked about — never the
-    PIN, which /api/god withholds on purpose so this poll cannot tell the room the digits before
+    PIN, which /api/self withholds on purpose so this poll cannot tell the room the digits before
     the leader does.
   */
   async openSessions({ community_id }) {
     return callGod('session', { function: 'open', community_id })
+  }
+
+  /*
+    What a member's dashboard listens to for its notice: every check-in in this community that is
+    still live, whether it is taking arrivals now or is only scheduled for later. It answers to the
+    self tier like 'open', and for the same reason — the people who need to hear that attendance is
+    being taken are the plain members in the room, and they lead nothing. It carries no PIN; the
+    leader-only 'manage' read is the one that does.
+  */
+  async liveSessions({ community_id }) {
+    return callGod('session', { function: 'live', community_id })
   }
 
   /*
@@ -78,7 +89,7 @@ export class SessionFetch {
   /*
     The two changes a dashboard makes to a check-in it manages: call it off, or widen and narrow
     the distance it takes arrivals from. Only the one who opened a session, or an admin of the
-    community, is allowed to make them, and /api/god settles that against the row itself rather
+    community, is allowed to make them, and /api/leader settles that against the row itself rather
     than trusting this page. Cancelling is one-way and carries no undo; a radius of null means no
     distance limit at all.
   */
@@ -93,7 +104,7 @@ export class SessionFetch {
     The member's own arrival, said as four digits. Nothing else about the check-in is asserted
     here: which gathering the PIN names, what day it is, whether the window holds, how far the
     phone is standing from where the session was opened and what time it is all come back from
-    /api/god, which reads them off the session row and its own clock rather than off this page.
+    /api/self, which reads them off the session row and its own clock rather than off this page.
     The two coordinates are the device's reading or nothing at all — a page that could not get a
     position sends nulls and lets the function decide whether that is enough.
   */

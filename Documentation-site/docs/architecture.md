@@ -4,56 +4,53 @@ Everything the app knows about people lives in one Postgres database on Supabase
 and Firebase Authentication is the only login. Between the React page and that
 database there are two paths:
 
-    page ──> src/page_functions/<area>.js ──┬──> POST /api/god ──> Supabase   (the service key is here)
+    page ──> src/page_functions/<area>.js ──┬──> POST /api/{self,leader,admin} ──> Supabase   (the service key is here)
                                             │
                                             └──> Supabase directly            (the testimonies file only)
 
 ## Path 1 — through the function
 
 Most pages do not talk to Supabase at all. They call `callGod(action, params)` in
-`src/page_functions/god.js`, which POSTs to `api/god.js` with the Firebase ID token
-of whoever is signed in as the bearer value. That function is the only place in the
-codebase that reads `SUPABASE_SERVICE_ROLE_KEY`, so the key that can see every table
-never reaches a browser: the built bundle under `dist/` was checked for it and does
-not contain it.
+`src/page_functions/god.js`, which POSTs — with the Firebase ID token of whoever is signed in as
+the bearer value — to one of three endpoints, chosen by the auth tier that owns the call:
+`api/self.js`, `api/leader.js` or `api/admin.js`. god.js used to be a single endpoint for all of
+it; it was split by who may call something, and the shared engine now lives in `lib/god.js`.
+Those three files are the only place in the codebase that reads `SUPABASE_SERVICE_ROLE_KEY`, so
+the key that can see every table never reaches a browser: the built bundle under `dist/` was
+checked for it and does not contain it.
 
-`api/god.js` answers in a fixed order:
+Each endpoint answers in a fixed order, sharing the `lib/god.js` dispatcher and checks:
 
 1. `POST` only.
 2. The bearer is either the deployment's own `GOD_SERVER_KEY`, or a Firebase ID token
    whose signature, issuing project, audience, subject and expiry are verified against
    Google's signing keys. A caller cannot pick the address it asks about: the email
    comes out of the verified token and overwrites whatever the body claimed.
-3. Without the server key, only what is listed in `SELF_ACTIONS` is answered — the
-   caller's own `user` row, the communities it belongs to, opening a community, joining
-   an empty one, leaving one, the roster, the join code, role assignment, attendance, and
-   one attendance write: recording that the caller is not attending.
-   `params.function` is then matched against the real method name on the class that was
-   picked, so a name that is not on that class is a 400 before it reaches the database.
-4. Anything that speaks about other people — `admin` `roster`, `admin` `changeCode`,
-   `admin` `assign`, `attendance` `services` and `service`, `community` `find`,
-   `member` `remove` — additionally requires a `community_id` in the request and a link
-   for the caller in that community, read from `community_members` off the token's
-   address rather than off the body. That link is then settled on one of two answers,
-   because reading about people and changing them are different permissions:
-
-   | Request | Link needed |
-   | --- | --- |
-   | `admin` `roster`, `attendance` `services` and `service` | `leader` or `admin` of that community |
-   | `admin` `changeCode`, `admin` `assign`, `member` `remove`, `community` `find` | `admin` of that community |
-
-   The roster is what the leader role exists to read, so it is settled on the leader tier
-   first: `admin` `roster` would otherwise match the admin test too, and a leader would be
-   refused the one read that is the whole point of the role. `community` `find` sits on the
-   admin tier only because the row it returns carries `join_id` — the code people type to
-   find the community is an admin's to see, so no leader page asks for it.
-5. `event` `record` — the not-attending notice — is checked on its own, because it is about
-   the caller rather than about anybody else, and so a member of any role may make it. Four
-   things are decided there and none of them is left to the request: the address the row names
-   is the token's, the answer is always `false`, a reason is optional and handwritten — whoever
-   gives notice words it as they please, an empty box is sent as `null`, and the function no
-   longer matches the wording against a list — and
-   only those six columns are passed on — a body that also carries
+3. Without the server key, an endpoint answers only the (action, function) pairs on its own
+   whitelist — `SELF_ACTIONS`, `LEADER_ACTIONS`, `ADMIN_ACTIONS` — which is what makes the split
+   hold: `callGod` picks the door by tier, and a browser that guesses a different door is refused
+   by the whitelist before it can borrow another tier's power. The `params.function` is then
+   matched against the real method name on the class that was picked, so a name that is not on
+   that class is a 400 before it reaches the database.
+4. The **leader** tier (`attendance` reads, `admin` `roster`, the `session` write/manage calls)
+   and the **admin** tier (`admin` `changeCode` and `assign`, `member` `remove`, `community`
+   `find`) each ask one role question of every browser request through `roleGate`: a
+   `community_id` in the body, and a matching `community_members` link for the caller read off
+   the token's address rather than the body's. A leader-tier call is let through by a `leader` or
+   `admin` link; an admin-tier call only by an `admin` link. `admin` `roster` is settled on the
+   leader door — `callGod` routes it there — because reading the roster is what the leader role
+   exists to do, and `community` `find` sits on the admin tier only because the row it returns
+   carries `join_id`.
+5. `event` `record` — the not-attending notice — lives on the **self** tier and is checked on its
+   own, because it is about the caller rather than about anybody else, so a member of any role may
+   make it. Five
+   things are decided there and none of them is left to the guesswork of a form: the address the row
+   names is the token's, the answer is always `false`, the gathering is read back off the session
+   opened for that day rather than typed (a day with no session, or with more than one, is refused
+   rather than guessed), a reason is optional and handwritten — whoever gives notice words it as they
+   please, an empty box is sent as `null`, and the function no longer matches the wording against a
+   list — and
+   only those columns are passed on — a body that also carries
    `recorded_by`, a `session_id` or a latitude has those dropped before the insert. Then one
    refusal: the row for that person, that day, that gathering is read first, and if it already
    says present the write is refused. A yes is a fact about a day that has gone by; letting it
@@ -86,13 +83,15 @@ So the split today is:
 | Page | Path |
 | --- | --- |
 | Login, create account, forgot password | Firebase, `src/functions/auth.js`, no database |
-| Profile, menu, community | `/api/god` |
-| Admin dashboard — roster, roles, code, leaving, opening a community | `/api/god` |
-| Admin attendance — gatherings and who was at one | `/api/god` |
-| Admin testimonies — list, search, save, export | direct Supabase, plus `/api/god` for names |
-| Leader dashboard — the people of the community, read only | `/api/god` `admin` `roster` |
+| Profile, menu, community | `/api/self` |
+| Admin dashboard — roster, roles, code, leaving, opening a community | `/api/admin` (roster via `/api/leader`) |
+| Admin attendance — gatherings and who was at one | `/api/leader` |
+| Admin testimonies — list, search, save, export | direct Supabase, plus `/api/leader` for names |
+| Leader dashboard — the people of the community, read only | `/api/leader` `admin` `roster` |
 | Leader attendance, leader testimonies | the same two paths the admin pages take |
-| Member dashboard | placeholder that reads nothing yet |
+| Member dashboard — the not-attending notice and the PIN check-in | `/api/self` |
+| Member dashboard — the live/scheduled check-in notice | `/api/self` `session` `live` |
+| Leader/admin dashboards — watching and managing open check-ins | `/api/leader` `session` `manage` |
 
 The leader pages are the admin ones with nothing to click: the roster arrives without the
 ⋮ menu that changes a role or takes somebody out, and no leader page asks the function for
@@ -166,10 +165,13 @@ instead.
   empty one and one with the box missing altogether both came back `200` and stored
   `reason = null`, and a reason typed onto such a notice replaced it without writing a second
   row. A wording outside the five — `Nope` — was `400` then, refused by the function before it
-  reached the table; that test has since come out of `api/god.js`, because the wording is the
+  reached the table; that test has since come out of the function (now `api/self.js`), because the
+  wording is the
   member's to choose and a notice they cannot finish typing is no use to anybody. What remains is
   the column's own check, named below.
-  A notice with no community and one with no gathering were `400` too, and a community the
+  A notice with no community was `400`, and a notice for a day with no session is now refused
+  outright rather than filed under a blank — the gathering is read back off that day's session, not
+  typed — and a community the
   caller is not in was `403` with its row count unmoved. The
   probe community, its rows, its link, its `users` row and the sign-in account were all
   deleted afterwards, and community A was re-read at 3450 attendance rows.
@@ -180,8 +182,8 @@ instead.
 - **Leaving cannot empty a community, and a role change cannot unmanage it**: a browser
   may not remove the last member, nor demote the only admin, and may not add itself with
   `role` `leader` to a community that already has members. All four refusals are in
-  `api/god.js` and were each confirmed against live data.
-- **A browser cannot move a user row onto another address.** `api/god.js` filters
+  `api/self.js` and `api/admin.js` and were each confirmed against live data.
+- **A browser cannot move a user row onto another address.** `api/self.js` filters
   `params.changes` down to `name` and `surname` before the update is sent, so an `email`
   in the request is dropped there rather than reaching the table. The address is only
   ever read from the verified sign-in.
@@ -205,10 +207,17 @@ withheld. The first two are still ahead of us, not behind us:
   `started_at`, `ended_at`, `latitude`, `longitude`, and `event.checked_in_at`,
   `checkin_latitude`, `checkin_longitude`, `recorded_by`, `session_id` — and no screen
   writes any of them.
-- **No screen opens a session or takes a PIN either.** `src/functions/session.js` exists
-  and `api/god.js` has a `session` action, but `SELF_ACTIONS` has no `session` entry, so
-  only the server key could create one today, and nothing holds that key except the
-  function itself.
+- **Session creation is guarded in the function, not the database.** The take-attendance page
+  opens one through `api/leader.js`, which puts `session` on the leader tier — `roleGate` demands
+  a `leader` or `admin` link for the `community_id` before the create runs — so a plain member's
+  browser cannot open a session, but nothing in the database would stop a caller who held the
+  service key. A create is also refused `409` when its window overlaps any un-cancelled session
+  already standing on that community, so two leaders cannot hold two check-ins open at once; the
+  overlap is settled on the server rather than by a page that might be looking at a stale list. The
+  two reads a plain member makes both answer on the self tier and carry no PIN: `open` returns only
+  the windows taking arrivals right now, and `live` adds the sessions scheduled for later so every
+  phone in the fellowship can be shown what is coming; the leader's `manage` is the one read that
+  carries a PIN, and only to its opener or an admin.
 - **An address is hidden by the pages, not withheld by the function.** `admin` `roster` still
   answers `email` for every person in the community, and `attendance` `service` still answers
   `email` for every attendee, because the roster row, the ⋮ menu and the two write calls are keyed
@@ -219,7 +228,7 @@ withheld. The first two are still ahead of us, not behind us:
   resolves for itself, which is a change to what `assign` and `member` `remove` are asked for rather
   than to what is drawn — deliberately not made here.
 - **The notice is written in the member's own words, and the live column has not been told it
-  may.** `api/god.js` stopped matching the reason against the five, and the box on both attendance
+  may.** `api/self.js` stopped matching the reason against the five, and the box on both attendance
   pages takes any wording with the five offered only as suggestions. `Documentation-site/docs/database.md`
   documents the column as a plain nullable `text` for that reason. The database this runs against
   still carries `event_reason_check`, so until

@@ -23,7 +23,7 @@ export class CommunityFetch {
   /*
     Opens a community and records the signed-in person as its admin. Two calls, because
     the new community_id only exists after the first one: create the row in `community`,
-    then link the caller's email to it in `community_members`. /api/god fills the email
+    then link the caller's email to it in `community_members`. /api/self fills the email
     from the caller's own id token and forces role to admin, and it refuses the second
     call once the community has any members, so this is the creator's path. Joining a group
     that already exists is joinCommunity below, and that one makes a member, never an admin.
@@ -40,7 +40,7 @@ export class CommunityFetch {
 
   /*
     Joining a community with the code an admin showed somebody. The request carries those six
-    characters and nothing else: /api/god reads the community off the code, answers for the
+    characters and nothing else: /api/self reads the community off the code, answers for the
     address on this browser's own id token and writes the role itself, so a page cannot join on
     somebody else's behalf or join as anything but a member.
 
@@ -59,7 +59,7 @@ export class CommunityFetch {
 
   /*
     Where this person's dashboard for a community lives. The role comes from
-    community_members for that (email, community_id) pair, and /api/god answers with the
+    community_members for that (email, community_id) pair, and /api/self answers with the
     address on the caller's own id token rather than the one passed in, so a browser
     cannot ask its way into a higher dashboard. Returns the route it navigated to, or
     null when the address is not a member of that community at all.

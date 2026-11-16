@@ -249,7 +249,7 @@ export default function AdminDashboard() {
 
   /*
     One click, one new role for one person in this community. The write is the server's:
-    /api/god has already shown the caller is an admin of this community before it let the
+    /api/admin has already shown the caller is an admin of this community before it let the
     popup open at all. The list is read again afterwards, so what the table shows is the role
     the row holds rather than the one that was typed. A refusal — an address that is not here,
     the community's only admin giving the role up — stays in the popup, where the choice was

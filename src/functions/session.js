@@ -83,27 +83,29 @@ export class Session {
     started_at,
   }) {
     /*
-      Only one person takes a community's attendance at a time. If a session is stood open at this
-      very moment — its window holds and nobody has cancelled it — a second one cannot be opened
-      over it, whoever is asking. That is the whole answer to two leaders in the same room reading
-      out two different PINs, and it is settled here on the server rather than by a page that could
-      be looking at a stale list. Cancelling a session, or its window simply ending, frees it again.
+      Only one person takes a community's attendance at a time. If a session is stood open whose
+      window overlaps the one being asked for — un-cancelled, and sharing any minute between its
+      start and its end — a second one cannot be opened over it, whoever is asking. That is the
+      whole answer to two leaders in the same room reading out two different PINs, and it is
+      settled here on the server rather than by a page that could be looking at a stale list.
+      Two windows overlap when neither finishes before the other begins, so a session scheduled for
+      later today competes with one being opened now just as surely as one that is live this second.
+      Cancelling a session, or its window simply ending, frees it again.
     */
-    const now = new Date().toISOString()
     const { data: holding, error: holdError } = await this.client
       .from(TABLE)
       .select('event_name, created_by')
       .eq('community_id', community_id)
       .eq('cancel', false)
-      .lte('started_at', now)
-      .gte('ended_at', now)
+      .lte('started_at', ended_at)
+      .gte('ended_at', started_at)
       .limit(1)
     if (holdError) throw holdError
     if (holding && holding.length) {
       const one = holding[0]
       const taken =
         one.created_by === created_by
-          ? 'You already have a check-in open for this community'
+          ? 'You already have a check-in open over that window'
           : `Attendance is already being taken for ${one.event_name || 'this community'}`
       throw Object.assign(new Error(`${taken}. Close or wait for it to end before opening another.`), {
         status: 409,
@@ -207,6 +209,39 @@ export class Session {
   }
 
   /*
+    What every member's dashboard listens to: each session in this community that is still live —
+    not cancelled, and whose window has not yet closed, whether it is taking check-ins now or is
+    only scheduled for later. This is the read behind the member's notice, and it answers the one
+    question a plain member has: is anybody taking attendance here, or about to.
+
+    It is deliberately the member-safe view. Unlike the leader's 'manage' it carries no PIN, so a
+    poll that every phone in the fellowship runs cannot hand out the four digits before the leader
+    reads them out. It returns the gathering's name, its window, whether it is open right now and
+    whether a distance will be asked about — enough to raise a banner and to point at the check-in
+    box, and nothing that could mark a stranger present.
+  */
+  async live({ community_id }) {
+    const now = new Date()
+    const { data, error } = await this.client
+      .from(TABLE)
+      .select(
+        'session_id, event_name, date, started_at, ended_at, radius, allow_any_radius, cancel, created_by',
+      )
+      .eq('community_id', community_id)
+      .eq('cancel', false)
+      .gte('ended_at', now.toISOString())
+      .order('started_at', { ascending: false })
+    if (error) throw error
+    return (data || []).map((one) => ({
+      ...one,
+      // Whether this session's window holds at this instant, as opposed to being scheduled later.
+      live: new Date(one.started_at) <= now && new Date(one.ended_at) >= now,
+      near_required:
+        one.allow_any_radius !== true && one.radius !== null && one.radius !== undefined,
+    }))
+  }
+
+  /*
     The two changes a dashboard may make to a session it is managing: cancel it, and widen or
     narrow the distance a check-in is taken from. Nothing else on the row moves here — the PIN, the
     window, the place and the gathering's name are set once when it is opened. Cancelling is
@@ -216,8 +251,8 @@ export class Session {
     a real distance in metres.
 
     Whether the caller is allowed to touch this row at all (its creator, or an admin of the
-    community) is settled by /api/god before it calls here, the same way every other guarded change
-    is; this method trusts that answer and asks only whether the change itself makes sense.
+    community) is settled by /api/leader before it calls here, the same way every other guarded
+    change is; this method trusts that answer and asks only whether the change itself makes sense.
   */
   async revise(session_id, changes = {}) {
     this.#id(session_id)

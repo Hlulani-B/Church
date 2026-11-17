@@ -10,6 +10,19 @@ import BackToCommunities from "../components/back.jsx";
 const accounts = new Auth();
 const sessions = new SessionFetch();
 
+/*
+  The window boxes want the browser's own wall clock (a datetime-local value carries no zone), and a
+  leader opening attendance for the gathering happening around them wants that window to be NOW. So
+  the boxes start at this instant and one hour on rather than sitting empty: the common case becomes a
+  session that is open the second it is saved, showing the PIN box to the whole room, not a future one.
+*/
+function localInput(date) {
+  const pad = (one) => String(one).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}`;
+}
+
 const css = `
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;1,500&display=swap");
 
@@ -91,8 +104,8 @@ export default function TakeAttendancePage() {
   const [noSession, setNoSession] = useState(false);
   const [pin, setPin] = useState("");
   const [name, setName] = useState("");
-  const [started, setStarted] = useState("");
-  const [ended, setEnded] = useState("");
+  const [started, setStarted] = useState(() => localInput(new Date()));
+  const [ended, setEnded] = useState(() => localInput(new Date(Date.now() + 60 * 60 * 1000)));
   const [place, setPlace] = useState(NO_PLACE);
   /*
     How near the room a check-in has to come from, in metres, and whether that question is asked

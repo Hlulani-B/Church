@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { SessionFetch } from "../page_functions/session.js";
-import { clock } from "../page_functions/place.js";
+import { clock, askPosition } from "../page_functions/place.js";
 
 const sessions = new SessionFetch();
 
@@ -54,11 +54,69 @@ const css = `
 .sl .tag.open{background:#111;color:#fff}
 .sl .tag.upcoming{color:#666;border-color:#bdbdbd}
 .sl .who{font-size:14px;color:#666;margin:8px 0 0}
+.sl .ask{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin:14px 0 0}
+.sl .ask label{display:flex;flex-direction:column;gap:6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#666;font-weight:600}
+.sl .ask input{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:22px;letter-spacing:.18em;text-indent:.18em;text-align:center;color:#111;background:#fff;border:1px solid #bdbdbd;border-radius:2px;padding:7px 10px;width:9ch}
+.sl .ask input:focus{outline:none;border-color:#111}
+.sl .ask button{background:#111;color:#fff;border:0;border-radius:2px;padding:11px 20px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
+.sl .ask button:disabled{opacity:.5;cursor:default}
+.sl .say{font-size:14px;margin:12px 0 0;border-left:3px solid #111;padding:8px 12px;background:#fff}
+.sl .say.bad{border-left-color:#a11111}
+.sl .say.ok{border-left-color:#1f7a3f}
 `;
 
-function Card({ one }) {
+/*
+  The PIN box lives inside the alert now: the very notice that says "X is taking attendance" is where
+  the four digits are typed, rather than a pointer to a separate box further down. Those digits go to
+  /api/self, which matches them against the session row and the server's own clock — nothing on this
+  page decides whether a check-in is true — and the device's position is asked for the instant Check
+  in is pressed, and only matters when the gathering was opened with a distance on it.
+*/
+function Card({ one, community_id }) {
+  const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false);
+  // The one line this box answers with: present, already present, or the reason it was refused.
+  const [result, setResult] = useState(null);
   // Who is taking attendance, said by name when the server could resolve it and plainly otherwise.
   const who = one.leader_name || "A leader";
+
+  async function checkIn(event) {
+    event.preventDefault();
+    if (!/^\d{4}$/.test(pin)) {
+      setResult({ kind: "bad", text: "Four digits, as the leader read them out." });
+      return;
+    }
+    setBusy(true);
+    setResult(null);
+    // Asked as it is pressed and never remembered: a place held from an hour ago is a claim about a
+    // room this phone has since left.
+    const read = await askPosition();
+    const held = read.state === "held";
+    try {
+      const came = await sessions.checkIn({
+        community_id,
+        pin,
+        latitude: held ? read.latitude : null,
+        longitude: held ? read.longitude : null,
+      });
+      setResult({
+        kind: "ok",
+        text: came.already
+          ? `You were already written down at ${came.event_name}, at ${clock(
+              came.checked_in_at,
+            )} — that arrival stands.`
+          : `You are present at ${came.event_name}, checked in at ${clock(came.checked_in_at)}.`,
+      });
+      setPin("");
+    } catch (cause) {
+      // A phone that would not give its place gets its own reason too, not just the server's.
+      const where = !held && read.state === "refused" ? ` ${read.message}` : "";
+      setResult({ kind: "bad", text: `${cause.message}${where}` });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className={`card${one.live ? "" : " soon"}`}>
       <p className="head">
@@ -71,13 +129,35 @@ function Card({ one }) {
       </p>
       <p className="who">
         {one.live
-          ? `Enter the PIN below to mark yourself present at ${
+          ? `Type the four digits the leader just read out to mark yourself present at ${
               one.event_name || "the gathering"
             } — open ${clock(one.started_at)} to ${clock(one.ended_at)}, ${reach(one)}.`
           : `Scheduled for ${day(one.started_at)}, ${clock(one.started_at)} to ${clock(
               one.ended_at,
             )}. The check-in opens here when it starts.`}
       </p>
+
+      {one.live && (
+        <form className="ask" onSubmit={checkIn}>
+          <label>
+            PIN
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="····"
+              value={pin}
+              maxLength={4}
+              onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
+            />
+          </label>
+          <button type="submit" disabled={busy}>
+            {busy ? "Checking…" : "Check in"}
+          </button>
+        </form>
+      )}
+
+      {result && <p className={`say ${result.kind}`}>{result.text}</p>}
     </div>
   );
 }
@@ -121,7 +201,7 @@ export default function SessionLive({ community_id }) {
     <section className="sl">
       <style>{css}</style>
       {ordered.map((one) => (
-        <Card key={one.session_id} one={one} />
+        <Card key={one.session_id} one={one} community_id={community_id} />
       ))}
     </section>
   );

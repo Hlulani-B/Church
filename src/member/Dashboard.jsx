@@ -4,7 +4,6 @@ import { Auth } from "../functions/auth.js";
 import { AttendanceFetch, REASONS } from "../page_functions/attendance.js";
 import Menu from "../components/menu.jsx";
 import BackToCommunities from "../components/back.jsx";
-import CheckIn from "../components/checkin.jsx";
 import SessionLive from "../components/session_live.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 import { AdminDashboardFetch } from "../page_functions/admin_dashboard.js";
@@ -223,10 +222,9 @@ export default function MemberDashboard() {
         <h1 className="serif">{heading.name || "This community"}</h1>
         <p className="sub">{admin.email}</p>
 
-        {/* Attendance comes first: whatever is being taken right now, and the box to answer it, sit
-            above everything else so nobody has to scroll to learn the room is being counted. */}
+        {/* Attendance comes first: whatever is being taken right now sits above everything else, and
+            the alert itself carries the PIN box, so nobody has to scroll to answer a live count. */}
         {communityId && <SessionLive community_id={communityId} />}
-        {communityId && <CheckIn community_id={communityId} email={admin.email} />}
 
         {communityId && (admins.length > 0 || leaders.length > 0) && (
           <div className="who">

@@ -4,7 +4,6 @@ import { Auth } from "../functions/auth.js";
 import { AdminDashboardFetch } from "../page_functions/admin_dashboard.js";
 import LeaderMenu from "./menu.jsx";
 import BackToCommunities from "../components/back.jsx";
-import CheckIn from "../components/checkin.jsx";
 import AttendanceControl from "../components/attendance_control.jsx";
 import SessionLive from "../components/session_live.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
@@ -207,12 +206,11 @@ export default function LeaderDashboard() {
         <h1 className="serif">{heading.name || "This community"}</h1>
         <p className="sub">{admin.email}</p>
 
-        {/* Attendance comes first: the notice of whatever is being taken right now, the leader's own
-            control, and the box to answer it all sit above everything else, so a leader sees that a
-            gathering is being counted the moment the page opens rather than after the roster. */}
+        {/* Attendance comes first: the notice (which carries its own PIN box) and the leader's own
+            control sit above everything else, so a leader sees a gathering being counted the moment
+            the page opens rather than after the roster. */}
         {communityId && <SessionLive community_id={communityId} />}
         {communityId && <AttendanceControl community_id={communityId} admin={false} />}
-        {communityId && <CheckIn community_id={communityId} email={admin.email} />}
 
         {error && <div className="note bad">{error}</div>}
 

@@ -38,12 +38,22 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au .links button{background:#fff;color:#111;border:1px solid #111;border-radius:2px;padding:12px 22px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
 .au .links button:hover{background:#111;color:#fff}
 
-/* Who runs this fellowship, shown by name to every member. A quiet line under the heading, not a
-   card: it answers a question a member might have, and asks for nothing back. */
-.au .who{margin:24px 0 0;display:flex;flex-direction:column;gap:7px}
-.au .who-row{margin:0;font-size:16px;display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}
-.au .who-role{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;min-width:62px}
-.au .who-names{color:var(--text);font-family:"Playfair Display",Georgia,"Times New Roman",serif}
+/* Who runs this fellowship, listed the way a leader or an admin lists their members — a table at the
+   foot of the page: same columns, same avatar and role chip, so a roster reads the same to everybody
+   who is shown one. */
+.au h3{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:48px 0 16px;font-weight:600;display:flex;align-items:center;gap:10px}
+.au h3 .count{background:#111;color:#fff;border-radius:999px;font-size:12px;letter-spacing:0;padding:1px 10px}
+.au .tablewrap{border:1px solid var(--line);border-radius:2px;overflow-x:auto;margin-top:14px}
+.au table{width:100%;border-collapse:collapse;font-size:15px}
+.au th{text-align:left;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:12px 16px;background:#fafafa;border-bottom:1px solid var(--line)}
+.au td{padding:12px 16px;border-bottom:1px solid var(--line);vertical-align:middle}
+.au tbody tr:last-child td{border-bottom:0}
+.au tbody tr:hover td{background:#fafafa}
+.au td .who{display:flex;align-items:center;gap:12px;font-weight:500}
+.au .avatar{flex:none;width:34px;height:34px;border-radius:50%;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;font-family:"Playfair Display",Georgia,"Times New Roman",serif;font-size:15px}
+.au .role{display:inline-block;border:1px solid var(--line);padding:2px 10px;font-size:12px;font-weight:600;text-transform:capitalize;background:#fff}
+.au .role.leader{border-color:#111}
+.au .role.admin{border-color:#111;background:#111;color:#fff}
 
 .au .note{background:#f4f4f4;border-left:3px solid #111;padding:12px 16px;font-size:14px;margin:22px 0 0}
 .au .note.bad{border-left-color:#a11111}
@@ -183,7 +193,6 @@ export default function MemberDashboard() {
     }
   }
 
-  const fullName = (one) => [one.name, one.surname].filter(Boolean).join(" ").trim();
   const admins = hosts.filter((one) => one.role === "admin");
   const leaders = hosts.filter((one) => one.role === "leader");
 
@@ -225,23 +234,6 @@ export default function MemberDashboard() {
         {/* Attendance comes first: whatever is being taken right now sits above everything else, and
             the alert itself carries the PIN box, so nobody has to scroll to answer a live count. */}
         {communityId && <SessionLive community_id={communityId} />}
-
-        {communityId && (admins.length > 0 || leaders.length > 0) && (
-          <div className="who">
-            {admins.length > 0 && (
-              <p className="who-row">
-                <span className="who-role">Admin</span>
-                <span className="who-names">{admins.map(fullName).filter(Boolean).join(", ")}</span>
-              </p>
-            )}
-            {leaders.length > 0 && (
-              <p className="who-row">
-                <span className="who-role">Leaders</span>
-                <span className="who-names">{leaders.map(fullName).filter(Boolean).join(", ")}</span>
-              </p>
-            )}
-          </div>
-        )}
 
         {communityId && (
           <div className="links">
@@ -306,6 +298,48 @@ export default function MemberDashboard() {
             {noticeError && <div className="note bad">{noticeError}</div>}
             {note && !noticeError && <div className="note">{note}</div>}
           </form>
+        )}
+
+        {/* The people who lead this fellowship, listed the same way a leader or an admin sees their
+            members — a roster at the foot of the page, so the day's own business comes first. */}
+        {communityId && (admins.length > 0 || leaders.length > 0) && (
+          <section className="roster">
+            <h3>
+              Leadership
+              {hosts.length ? <span className="count">{hosts.length}</span> : null}
+            </h3>
+            <div className="tablewrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Surname</th>
+                    <th>Role</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hosts.map((one, i) => (
+                    <tr key={`${one.role}-${one.name}-${one.surname}-${i}`}>
+                      <td className="name">
+                        <div className="who">
+                          <span className="avatar" aria-hidden="true">
+                            {(one.name || "?").charAt(0).toUpperCase()}
+                          </span>
+                          {one.name}
+                        </div>
+                      </td>
+                      <td>{one.surname}</td>
+                      <td>
+                        <span className={one.role === "admin" ? "role admin" : "role leader"}>
+                          {one.role}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
         )}
       </main>
     </div>

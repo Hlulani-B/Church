@@ -170,8 +170,13 @@ export default function TakeAttendancePage() {
         community_id: communityId,
         pin,
         event_name: name.trim(),
-        started_at: started,
-        ended_at: ended,
+        // A datetime-local box carries no zone, so "19:03" means half past seven *here* — the
+        // browser is the only party that knows which here. Hand over the true UTC instant (which
+        // this device's clock resolves) and the leader's own calendar day, so the session is open
+        // when the leader meant it, not six hours adrift by the server's UTC assumption.
+        date: started.slice(0, 10),
+        started_at: new Date(started).toISOString(),
+        ended_at: new Date(ended).toISOString(),
         latitude: place.latitude,
         longitude: place.longitude,
         radius: radius.trim() === "" ? null : metres,

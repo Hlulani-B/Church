@@ -96,7 +96,7 @@ export class Session {
       .from(TABLE)
       .select('event_name, created_by')
       .eq('community_id', community_id)
-      .eq('cancel', false)
+      .or('cancel.eq.false,cancel.is.null')
       .lte('started_at', ended_at)
       .gte('ended_at', started_at)
       .limit(1)
@@ -117,6 +117,7 @@ export class Session {
         community_id,
         pin,
         created_by,
+        cancel: false,
         date,
         ended_at,
         event_name,
@@ -164,7 +165,7 @@ export class Session {
         'session_id, event_name, date, started_at, ended_at, radius, allow_any_radius, created_by',
       )
       .eq('community_id', community_id)
-      .eq('cancel', false)
+      .or('cancel.eq.false,cancel.is.null')
       .lt('started_at', now)
       .gt('ended_at', now)
       .order('started_at', { ascending: false })
@@ -228,7 +229,7 @@ export class Session {
         'session_id, event_name, date, started_at, ended_at, radius, allow_any_radius, cancel, created_by',
       )
       .eq('community_id', community_id)
-      .eq('cancel', false)
+      .or('cancel.eq.false,cancel.is.null')
       .gte('ended_at', now.toISOString())
       .order('started_at', { ascending: false })
     if (error) throw error

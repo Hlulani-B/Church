@@ -190,7 +190,13 @@ export default async function handler(req, res) {
           .status(400)
           .json({ error: 'params.radius is a distance in metres, from 1 to 20000' })
       }
-      const date = started.slice(0, 10)
+      // The leader typed a local wall-clock day, and the browser sends it as `date` so the record
+      // is filed under the day the room recognises rather than the UTC day an evening service
+      // spills into. An older caller that sends no day falls back to the start instant's own date.
+      const localDay = String(params.date || '').slice(0, 10)
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(localDay)
+        ? localDay
+        : startDate.toISOString().slice(0, 10)
       params = {
         function: 'create',
         community_id: params.community_id,

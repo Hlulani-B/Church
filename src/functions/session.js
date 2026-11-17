@@ -222,9 +222,10 @@ export class Session {
     asked about — enough to raise the alert and to accept the PIN the leader just said out loud.
 
     `email` is the caller's own address, forced by /api/self from the token. It never leaves the
-    server as data; it only decides the `mine` flag, which tells the creator's phone that this is
-    the check-in they opened — their attendance was already written when they saved it, so the PIN
-    box would be them entering their own secret to mark themselves present a second time.
+    server as data; it decides one thing. A session whose register already holds the caller as
+    attending has been marked — including the one they opened themselves, whose row is written as
+    a yes when they save it. Those sessions are dropped from the answer entirely: whoever has
+    marked the register sees no card, no PIN box, nothing to mark twice.
   */
   async live({ community_id, email }) {
     const now = new Date().toISOString()
@@ -240,12 +241,35 @@ export class Session {
       .order('started_at', { ascending: false })
     if (error) throw error
     /*
+      Whoever already stands marked at one of these gatherings is done with this notice. The
+      register is read once for the caller's address over exactly these days, and its yeses are
+      the sessions to drop — a marked "not attending" is not a mark, and leaves the card standing
+      so the person can still change their day by checking in. The creator's own row counts as
+      such a yes: /api/leader wrote it when they opened the session.
+    */
+    let marked = new Set()
+    if (email && (data || []).length) {
+      const dates = [...new Set(data.map((one) => one.date).filter(Boolean))]
+      const { data: rows, error: rowsError } = await this.client
+        .from('event')
+        .select('event_date, event_name')
+        .eq('community_id', community_id)
+        .eq('user_email', email)
+        .eq('attend', true)
+        .in('event_date', dates)
+      if (rowsError) throw rowsError
+      marked = new Set((rows || []).map((row) => `${row.event_date}||${row.event_name || ''}`))
+    }
+    const answerable = (data || []).filter(
+      (one) => !marked.has(`${one.date}||${one.event_name || ''}`),
+    )
+    /*
       The fellowship wants to know who is taking attendance, not just that somebody is, so each row
       carries the name of the person who opened it. It is read off the users table by the creator's
       address in one go rather than row by row, and it is only ever a name — the address itself is
       not handed to every phone, and the PIN stays back regardless.
     */
-    const creators = [...new Set((data || []).map((one) => one.created_by).filter(Boolean))]
+    const creators = [...new Set(answerable.map((one) => one.created_by).filter(Boolean))]
     let names = {}
     if (creators.length) {
       const { data: people, error: peopleError } = await this.client
@@ -259,12 +283,10 @@ export class Session {
         ),
       )
     }
-    return (data || []).map((one) => ({
+    return answerable.map((one) => ({
       ...one,
       // The person who opened this check-in, so the notice can name them. '' if the row is unknown.
       leader_name: names[one.created_by] || '',
-      // The opener's own phone sees this and skips the PIN box: their attendance is already yes.
-      mine: !!email && one.created_by === email,
       near_required:
         one.allow_any_radius !== true && one.radius !== null && one.radius !== undefined,
     }))

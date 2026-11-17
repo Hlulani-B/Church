@@ -51,16 +51,15 @@ const css = `
 `;
 
 /*
-  One card per live session. The PIN box is always here for everybody but one: the person who
-  opened the session. Their attendance was written as a yes the moment they saved it, so a box
-  asking them to type their own PIN back is them entering their own secret to mark themselves
-  present a second time — their card says the register already holds them instead. The server
-  marks which rows are the caller's own (`mine`), from the token rather than anything the page
-  typed. Every other phone sees the box; the four digits go to /api/self, which matches them
+  One card per live session. A session whose register already holds you never reaches this page
+  at all: the server's live read drops it — for whoever marked the register, including the person
+  who opened the session, whose own yes is written when they save it. There is nothing here to
+  mark twice, so there is nothing to show. The four digits go to /api/self, which matches them
   against the session row (PIN, window, distance) using the server's own clock. Nothing on this
-  page decides whether a check-in is true.
+  page decides whether a check-in is true, and a check-in that lands makes this card — the whole
+  section, if it was the last one — disappear on the spot.
 */
-function Card({ one, community_id }) {
+function Card({ one, community_id, onMarked }) {
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null); // {kind:'ok'|'bad', text}
@@ -89,7 +88,13 @@ function Card({ one, community_id }) {
           ? `You have already marked the register at ${came.event_name}, done at ${clock(came.checked_in_at)}.`
           : `You have marked the register at ${came.event_name}, at ${clock(came.checked_in_at)}.`,
       });
-      setPin("");
+      /*
+        Marked is marked: the card goes now rather than on the next poll. The same answer arrives
+        on every later read — the server no longer lists a session this register already holds —
+        so waiting fifteen seconds to forget what just happened would only look like a freeze.
+      */
+      onMarked(one.session_id);
+      return;
     } catch (cause) {
       const where = !held && read.state === "refused" ? ` ${read.message}` : "";
       setResult({ kind: "bad", text: `${cause.message}${where}` });
@@ -101,46 +106,34 @@ function Card({ one, community_id }) {
   return (
     <div className="card">
       <p className="head">
-        <span className="what">
-          {one.mine ? "You are taking attendance" : `${who} is taking attendance`}
-        </span>
+        <span className="what">{who} is taking attendance</span>
         <span className="tag open">Open now</span>
       </p>
-      {one.mine ? (
-        <p className="who">
-          You opened this check-in, so the register already has you at{" "}
-          <strong>{one.event_name || "the gathering"}</strong> as attending — there is no PIN for
-          you to enter. Tell the room the four digits.
-        </p>
-      ) : (
-        <>
-          <p className="who">
-            Type the four digits the leader just read out to mark yourself present at{" "}
-            {one.event_name || "the gathering"} — open {clock(one.started_at)} to{" "}
-            {clock(one.ended_at)}, {reach(one)}.
-          </p>
+      <p className="who">
+        Type the four digits the leader just read out to mark yourself present at{" "}
+        {one.event_name || "the gathering"} — open {clock(one.started_at)} to{" "}
+        {clock(one.ended_at)}, {reach(one)}.
+      </p>
 
-          <form className="ask" onSubmit={checkIn}>
-            <label>
-              PIN
-              <input
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                placeholder="····"
-                value={pin}
-                maxLength={4}
-                onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
-              />
-            </label>
-            <button type="submit" disabled={busy}>
-              {busy ? "Checking…" : "Check in"}
-            </button>
-          </form>
+      <form className="ask" onSubmit={checkIn}>
+        <label>
+          PIN
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="····"
+            value={pin}
+            maxLength={4}
+            onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
+          />
+        </label>
+        <button type="submit" disabled={busy}>
+          {busy ? "Checking…" : "Check in"}
+        </button>
+      </form>
 
-          {result && <p className={`say${result.kind === "bad" ? " bad" : ""}`}>{result.text}</p>}
-        </>
-      )}
+      {result && <p className={`say${result.kind === "bad" ? " bad" : ""}`}>{result.text}</p>}
     </div>
   );
 }
@@ -178,7 +171,12 @@ export default function SessionLive({ community_id }) {
     <section className="sl">
       <style>{css}</style>
       {rows.map((one) => (
-        <Card key={one.session_id} one={one} community_id={community_id} />
+        <Card
+          key={one.session_id}
+          one={one}
+          community_id={community_id}
+          onMarked={(session_id) => setRows((before) => before.filter((row) => row.session_id !== session_id))}
+        />
       ))}
     </section>
   );

@@ -210,19 +210,19 @@ export class Session {
   }
 
   /*
-    What every member's dashboard listens to: each session in this community that is still live —
-    not cancelled, and whose window has not yet closed, whether it is taking check-ins now or is
-    only scheduled for later. This is the read behind the member's notice, and it answers the one
-    question a plain member has: is anybody taking attendance here, or about to.
+    What every member's dashboard listens to: each session in this community whose window holds at
+    this instant — not cancelled, started_at already reached, ended_at not yet passed. Nothing is
+    reported before its time: a session scheduled for later does not appear here at all, so the
+    alert never offers a PIN box the server would refuse. When the window comes into effect, the
+    next poll picks it up.
 
     It is deliberately the member-safe view. Unlike the leader's 'manage' it carries no PIN, so a
     poll that every phone in the fellowship runs cannot hand out the four digits before the leader
-    reads them out. It returns the gathering's name, its window, whether it is open right now and
-    whether a distance will be asked about — enough to raise a banner and to point at the check-in
-    box, and nothing that could mark a stranger present.
+    reads them out. It returns the gathering's name, its window, and whether a distance will be
+    asked about — enough to raise the alert and to accept the PIN the leader just said out loud.
   */
   async live({ community_id }) {
-    const now = new Date()
+    const now = new Date().toISOString()
     const { data, error } = await this.client
       .from(TABLE)
       .select(
@@ -230,7 +230,8 @@ export class Session {
       )
       .eq('community_id', community_id)
       .or('cancel.eq.false,cancel.is.null')
-      .gte('ended_at', now.toISOString())
+      .lte('started_at', now)
+      .gte('ended_at', now)
       .order('started_at', { ascending: false })
     if (error) throw error
     /*
@@ -257,8 +258,6 @@ export class Session {
       ...one,
       // The person who opened this check-in, so the notice can name them. '' if the row is unknown.
       leader_name: names[one.created_by] || '',
-      // Whether this session's window holds at this instant, as opposed to being scheduled later.
-      live: new Date(one.started_at) <= now && new Date(one.ended_at) >= now,
       near_required:
         one.allow_any_radius !== true && one.radius !== null && one.radius !== undefined,
     }))

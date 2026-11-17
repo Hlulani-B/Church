@@ -12,14 +12,6 @@ const sessions = new SessionFetch();
 */
 const LISTEN_EVERY = 15000;
 
-// A day and a time together, so a session scheduled for later still says which day it is.
-function day(value) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-}
-
 // How near the room a check-in has to come from, said the way the opener chose it.
 function reach(one) {
   return one.allow_any_radius || !one.near_required
@@ -28,31 +20,25 @@ function reach(one) {
 }
 
 /*
-  The notice every member of a fellowship sees.
+  The notice every member of a fellowship sees when attendance is being taken RIGHT NOW.
 
-  This is the answer to "attendance is being taken, and nobody told me". The check-in box below it
-  only appears while a window is actually open, so a member who walks in early — or a leader who
-  scheduled the gathering for later in the day — had no way to know anything was coming. This box
-  reads the community's live sessions, open and scheduled together, and says so out loud to every
-  phone in the fellowship, not only the ones already staring at a PIN field.
+  Only sessions whose window holds (started_at <= now <= ended_at) and cancel is false reach this
+  component — nothing scheduled, nothing ended. A member who walks in during a live session sees
+  this card appear with the leader's name and a PIN input. They type the four digits the leader
+  just read out, press Check in, and the server decides:
+    - Rejection: "the pin is wrong" / "you are not within the radius" / etc.
+    - Acceptance: "You have marked the register" — the event table gets attend=true, reason=null.
 
   It is a poll and not a push, because that is what this app has: no message service is wired up,
   so the notice a whole community gets is this card appearing the next time their dashboard asks.
-
-  Everything it shows is the member-safe read. It carries no PIN and no controls — the four digits
-  still only reach the room when the leader reads them out, and the leader's own control is the one
-  place a session can be cancelled or its radius moved. A plain member sees what is happening and
-  when; the check-in box is where they act on it.
 */
 const css = `
 .sl{display:flex;flex-direction:column;gap:12px;margin:34px 0 0}
 .sl .card{border:1px solid #e3e3e3;border-left:4px solid #111;border-radius:2px;padding:14px 18px;background:#fafafa}
-.sl .card.soon{border-left-color:#bdbdbd}
 .sl .head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0}
 .sl .head .what{font-family:"Playfair Display",Georgia,"Times New Roman",serif;font-size:21px;font-weight:600;margin:0}
 .sl .tag{font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;padding:2px 10px;border:1px solid #111;border-radius:999px}
 .sl .tag.open{background:#111;color:#fff}
-.sl .tag.upcoming{color:#666;border-color:#bdbdbd}
 .sl .who{font-size:14px;color:#666;margin:8px 0 0}
 .sl .ask{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin:14px 0 0}
 .sl .ask label{display:flex;flex-direction:column;gap:6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#666;font-weight:600}
@@ -60,36 +46,29 @@ const css = `
 .sl .ask input:focus{outline:none;border-color:#111}
 .sl .ask button{background:#111;color:#fff;border:0;border-radius:2px;padding:11px 20px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
 .sl .ask button:disabled{opacity:.5;cursor:default}
-.sl .say{font-size:14px;margin:12px 0 0;border-left:3px solid #111;padding:8px 12px;background:#fff}
+.sl .say{font-size:14px;margin:12px 0 0;border-left:3px solid #1f7a3f;padding:8px 12px;background:#fff}
 .sl .say.bad{border-left-color:#a11111}
-.sl .say.ok{border-left-color:#1f7a3f}
 `;
 
 /*
-  The PIN box lives inside the alert now: the very notice that says "X is taking attendance" is where
-  the four digits are typed, rather than a pointer to a separate box further down. Those digits go to
-  /api/self, which matches them against the session row and the server's own clock — nothing on this
-  page decides whether a check-in is true — and the device's position is asked for the instant Check
-  in is pressed, and only matters when the gathering was opened with a distance on it.
+  One card per live session. The PIN box is always here — it would be useless if it weren't. The
+  four digits go to /api/self, which matches them against the session row (PIN, window, distance)
+  using the server's own clock. Nothing on this page decides whether a check-in is true.
 */
 function Card({ one, community_id }) {
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
-  // The one line this box answers with: present, already present, or the reason it was refused.
-  const [result, setResult] = useState(null);
-  // Who is taking attendance, said by name when the server could resolve it and plainly otherwise.
+  const [result, setResult] = useState(null); // {kind:'ok'|'bad', text}
   const who = one.leader_name || "A leader";
 
   async function checkIn(event) {
     event.preventDefault();
     if (!/^\d{4}$/.test(pin)) {
-      setResult({ kind: "bad", text: "Four digits, as the leader read them out." });
+      setResult({ kind: "bad", text: "Enter the four digits the leader read out." });
       return;
     }
     setBusy(true);
     setResult(null);
-    // Asked as it is pressed and never remembered: a place held from an hour ago is a claim about a
-    // room this phone has since left.
     const read = await askPosition();
     const held = read.state === "held";
     try {
@@ -102,14 +81,11 @@ function Card({ one, community_id }) {
       setResult({
         kind: "ok",
         text: came.already
-          ? `You were already written down at ${came.event_name}, at ${clock(
-              came.checked_in_at,
-            )} — that arrival stands.`
-          : `You are present at ${came.event_name}, checked in at ${clock(came.checked_in_at)}.`,
+          ? `You have already marked the register at ${came.event_name}, done at ${clock(came.checked_in_at)}.`
+          : `You have marked the register at ${came.event_name}, at ${clock(came.checked_in_at)}.`,
       });
       setPin("");
     } catch (cause) {
-      // A phone that would not give its place gets its own reason too, not just the server's.
       const where = !held && read.state === "refused" ? ` ${read.message}` : "";
       setResult({ kind: "bad", text: `${cause.message}${where}` });
     } finally {
@@ -118,26 +94,17 @@ function Card({ one, community_id }) {
   }
 
   return (
-    <div className={`card${one.live ? "" : " soon"}`}>
+    <div className="card">
       <p className="head">
-        <span className="what">
-          {one.live ? `${who} is taking attendance` : one.event_name || "A gathering"}
-        </span>
-        <span className={`tag ${one.live ? "open" : "upcoming"}`}>
-          {one.live ? "Open now" : "Scheduled"}
-        </span>
+        <span className="what">{who} is taking attendance</span>
+        <span className="tag open">Open now</span>
       </p>
       <p className="who">
-        {one.live
-          ? `Type the four digits the leader just read out to mark yourself present at ${
-              one.event_name || "the gathering"
-            } — open ${clock(one.started_at)} to ${clock(one.ended_at)}, ${reach(one)}.`
-          : `Scheduled for ${day(one.started_at)}, ${clock(one.started_at)} to ${clock(one.ended_at)} \u2014 type the PIN whenever the leader reads it out; the server accepts it while the window is open.`}
+        Type the four digits the leader just read out to mark yourself present at{" "}
+        {one.event_name || "the gathering"} — open {clock(one.started_at)} to{" "}
+        {clock(one.ended_at)}, {reach(one)}.
       </p>
 
-      {/* The PIN entry is always here — the leader reads digits at any moment and the room needs
-          somewhere to type them immediately. Whether a check-in stands is the server's call; if the
-          window hasn't opened yet the server refuses clearly and that refusal shows inline below. */}
       <form className="ask" onSubmit={checkIn}>
         <label>
           PIN
@@ -156,7 +123,7 @@ function Card({ one, community_id }) {
         </button>
       </form>
 
-      {result && <p className={`say ${result.kind}`}>{result.text}</p>}
+      {result && <p className={`say${result.kind === "bad" ? " bad" : ""}`}>{result.text}</p>}
     </div>
   );
 }
@@ -187,19 +154,13 @@ export default function SessionLive({ community_id }) {
     };
   }, [community_id]);
 
-  // Nothing live and nothing scheduled: there is nothing for this box to say.
+  // The server returns nothing when there's no live session — so this section vanishes entirely.
   if (!rows.length) return null;
-
-  // Whatever is taking arrivals now leads, then the soonest of what is still to come.
-  const ordered = [...rows].sort((a, b) => {
-    if (!!b.live !== !!a.live) return (b.live ? 1 : 0) - (a.live ? 1 : 0);
-    return new Date(a.started_at) - new Date(b.started_at);
-  });
 
   return (
     <section className="sl">
       <style>{css}</style>
-      {ordered.map((one) => (
+      {rows.map((one) => (
         <Card key={one.session_id} one={one} community_id={community_id} />
       ))}
     </section>

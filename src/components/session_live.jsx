@@ -132,30 +132,29 @@ function Card({ one, community_id }) {
           ? `Type the four digits the leader just read out to mark yourself present at ${
               one.event_name || "the gathering"
             } — open ${clock(one.started_at)} to ${clock(one.ended_at)}, ${reach(one)}.`
-          : `Scheduled for ${day(one.started_at)}, ${clock(one.started_at)} to ${clock(
-              one.ended_at,
-            )}. The check-in opens here when it starts.`}
+          : `Scheduled for ${day(one.started_at)}, ${clock(one.started_at)} to ${clock(one.ended_at)} \u2014 type the PIN whenever the leader reads it out; the server accepts it while the window is open.`}
       </p>
 
-      {one.live && (
-        <form className="ask" onSubmit={checkIn}>
-          <label>
-            PIN
-            <input
-              type="text"
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder="····"
-              value={pin}
-              maxLength={4}
-              onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
-            />
-          </label>
-          <button type="submit" disabled={busy}>
-            {busy ? "Checking…" : "Check in"}
-          </button>
-        </form>
-      )}
+      {/* The PIN entry is always here — the leader reads digits at any moment and the room needs
+          somewhere to type them immediately. Whether a check-in stands is the server's call; if the
+          window hasn't opened yet the server refuses clearly and that refusal shows inline below. */}
+      <form className="ask" onSubmit={checkIn}>
+        <label>
+          PIN
+          <input
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="····"
+            value={pin}
+            maxLength={4}
+            onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
+          />
+        </label>
+        <button type="submit" disabled={busy}>
+          {busy ? "Checking…" : "Check in"}
+        </button>
+      </form>
 
       {result && <p className={`say ${result.kind}`}>{result.text}</p>}
     </div>

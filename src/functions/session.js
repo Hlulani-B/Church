@@ -220,8 +220,13 @@ export class Session {
     poll that every phone in the fellowship runs cannot hand out the four digits before the leader
     reads them out. It returns the gathering's name, its window, and whether a distance will be
     asked about — enough to raise the alert and to accept the PIN the leader just said out loud.
+
+    `email` is the caller's own address, forced by /api/self from the token. It never leaves the
+    server as data; it only decides the `mine` flag, which tells the creator's phone that this is
+    the check-in they opened — their attendance was already written when they saved it, so the PIN
+    box would be them entering their own secret to mark themselves present a second time.
   */
-  async live({ community_id }) {
+  async live({ community_id, email }) {
     const now = new Date().toISOString()
     const { data, error } = await this.client
       .from(TABLE)
@@ -258,6 +263,8 @@ export class Session {
       ...one,
       // The person who opened this check-in, so the notice can name them. '' if the row is unknown.
       leader_name: names[one.created_by] || '',
+      // The opener's own phone sees this and skips the PIN box: their attendance is already yes.
+      mine: !!email && one.created_by === email,
       near_required:
         one.allow_any_radius !== true && one.radius !== null && one.radius !== undefined,
     }))

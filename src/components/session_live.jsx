@@ -51,9 +51,14 @@ const css = `
 `;
 
 /*
-  One card per live session. The PIN box is always here — it would be useless if it weren't. The
-  four digits go to /api/self, which matches them against the session row (PIN, window, distance)
-  using the server's own clock. Nothing on this page decides whether a check-in is true.
+  One card per live session. The PIN box is always here for everybody but one: the person who
+  opened the session. Their attendance was written as a yes the moment they saved it, so a box
+  asking them to type their own PIN back is them entering their own secret to mark themselves
+  present a second time — their card says the register already holds them instead. The server
+  marks which rows are the caller's own (`mine`), from the token rather than anything the page
+  typed. Every other phone sees the box; the four digits go to /api/self, which matches them
+  against the session row (PIN, window, distance) using the server's own clock. Nothing on this
+  page decides whether a check-in is true.
 */
 function Card({ one, community_id }) {
   const [pin, setPin] = useState("");
@@ -96,34 +101,46 @@ function Card({ one, community_id }) {
   return (
     <div className="card">
       <p className="head">
-        <span className="what">{who} is taking attendance</span>
+        <span className="what">
+          {one.mine ? "You are taking attendance" : `${who} is taking attendance`}
+        </span>
         <span className="tag open">Open now</span>
       </p>
-      <p className="who">
-        Type the four digits the leader just read out to mark yourself present at{" "}
-        {one.event_name || "the gathering"} — open {clock(one.started_at)} to{" "}
-        {clock(one.ended_at)}, {reach(one)}.
-      </p>
+      {one.mine ? (
+        <p className="who">
+          You opened this check-in, so the register already has you at{" "}
+          <strong>{one.event_name || "the gathering"}</strong> as attending — there is no PIN for
+          you to enter. Tell the room the four digits.
+        </p>
+      ) : (
+        <>
+          <p className="who">
+            Type the four digits the leader just read out to mark yourself present at{" "}
+            {one.event_name || "the gathering"} — open {clock(one.started_at)} to{" "}
+            {clock(one.ended_at)}, {reach(one)}.
+          </p>
 
-      <form className="ask" onSubmit={checkIn}>
-        <label>
-          PIN
-          <input
-            type="text"
-            inputMode="numeric"
-            autoComplete="off"
-            placeholder="····"
-            value={pin}
-            maxLength={4}
-            onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
-          />
-        </label>
-        <button type="submit" disabled={busy}>
-          {busy ? "Checking…" : "Check in"}
-        </button>
-      </form>
+          <form className="ask" onSubmit={checkIn}>
+            <label>
+              PIN
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="····"
+                value={pin}
+                maxLength={4}
+                onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
+              />
+            </label>
+            <button type="submit" disabled={busy}>
+              {busy ? "Checking…" : "Check in"}
+            </button>
+          </form>
 
-      {result && <p className={`say${result.kind === "bad" ? " bad" : ""}`}>{result.text}</p>}
+          {result && <p className={`say${result.kind === "bad" ? " bad" : ""}`}>{result.text}</p>}
+        </>
+      )}
     </div>
   );
 }

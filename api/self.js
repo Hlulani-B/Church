@@ -260,6 +260,28 @@ export default async function handler(req, res) {
             'that session was opened without naming a gathering, so nobody can be checked in at it — ask the leader to open a new one',
         })
       }
+      /*
+        The person who opened a session does not check in to it. Their own attendance row was
+        written as a yes the moment the session was saved, at /api/leader — so these digits are
+        their own secret, and typing them back would either re-assert a fact that stands or, worse,
+        be read as a fresh arrival. The row that already holds them comes back unchanged, said as
+        the arrival it is, and nothing is written.
+      */
+      const gatherings = new Event(god.url, god.key)
+      if (open.created_by === email) {
+        const [own] = await gatherings.all({
+          community_id: params.community_id,
+          event_date: open.date,
+          event_name: open.event_name,
+          user_email: email,
+        })
+        if (own?.attend) {
+          return res.status(200).json({ data: { ...own, already: true, metres: null } })
+        }
+        return res.status(400).json({
+          error: 'you opened this check-in — your attendance is written when you open it, not from its PIN',
+        })
+      }
       const latitude = reading(params.latitude)
       const longitude = reading(params.longitude)
       const reported =
@@ -296,7 +318,6 @@ export default async function handler(req, res) {
           error: `you are ${metres} m from where this was opened, and it only takes check-ins within ${Math.round(limit)} m of that`,
         })
       }
-      const gatherings = new Event(god.url, god.key)
       const [already] = await gatherings.all({
         community_id: params.community_id,
         event_date: open.date,
@@ -424,6 +445,8 @@ export default async function handler(req, res) {
       }
       const openings = await new Session(god.url, god.key).live({
         community_id: params.community_id,
+        // The token's address decides which of these rows the caller opened; it is not a body value.
+        email,
       })
       return res.status(200).json({ data: openings })
     }

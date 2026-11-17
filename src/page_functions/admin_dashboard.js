@@ -35,6 +35,16 @@ export class AdminDashboardFetch {
   }
 
   /*
+    The names of the people who lead one community — its admin(s) and its leaders — for a plain
+    member's dashboard. Answers [{ role, name, surname }] and no email: /api/self opens this for
+    any member of the community and nobody outside it, and the addresses that the leader's roster
+    carries are left out on purpose.
+  */
+  async getHosts(community_id) {
+    return callGod('admin', { function: 'hosts', community_id })
+  }
+
+  /*
     The one community being administered: { community_id, name, join_id }. The name goes
     in the heading so the page can say which group the list below belongs to, and the
     join_id is the code people type to find it. /api/admin answers this for an admin of

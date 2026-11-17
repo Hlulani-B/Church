@@ -148,12 +148,6 @@ export default function TakeAttendancePage() {
       setError("A PIN, a start and an end: the session needs all three.");
       return;
     }
-    if (!name.trim()) {
-      setError(
-        "This session has to say which gathering it opens — that name is what every attendance row at it is filed under.",
-      );
-      return;
-    }
     // A blank would be stored as no limit at all, which is not what an empty box means.
     const metres = Number(radius)
     if (!anywhere && !(Number.isFinite(metres) && metres > 0)) {
@@ -257,7 +251,7 @@ export default function TakeAttendancePage() {
 
             <h3>2 · The gathering</h3>
             <div className="field">
-              <label htmlFor="session-name">Name</label>
+              <label htmlFor="session-name">Name (optional)</label>
               <input
                 id="session-name"
                 type="text"
@@ -268,7 +262,8 @@ export default function TakeAttendancePage() {
             </div>
             <p className="fine">
               This is the name the attendance of that day is filed under, yours included, so a
-              gathering called two things is two gatherings.
+              gathering called two things is two gatherings. It is optional — leave it blank and
+              the day is filed under “Gathering”.
             </p>
 
             <h3>3 · The window</h3>
@@ -366,7 +361,7 @@ export default function TakeAttendancePage() {
                 <button
                   className="btn"
                   type="submit"
-                  disabled={busy || !pin || !name.trim() || place.state !== "held"}
+                  disabled={busy || !pin || place.state !== "held"}
                 >
                   {busy ? "Opening…" : "Open session"}
                 </button>

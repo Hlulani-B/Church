@@ -1,5 +1,6 @@
 import { CommunityMember } from '../src/functions/community_members.js'
 import { ROLES } from '../src/functions/admin_dashboard.js'
+import { cors } from '../lib/cors.js'
 import {
   God,
   authenticate,
@@ -32,6 +33,8 @@ const ADMIN_ACTIONS = {
 }
 
 export default async function handler(req, res) {
+  // Answer a cross-origin preflight before authenticate, which is POST-only and would 405 it.
+  if (cors(req, res)) return
   const auth = await authenticate(req, res)
   if (!auth) return
   const { token } = auth

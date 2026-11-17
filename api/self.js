@@ -1,7 +1,9 @@
 import { Community } from '../src/functions/community.js'
 import { CommunityMember } from '../src/functions/community_members.js'
+import { AdminDashboard } from '../src/functions/admin_dashboard.js'
 import { Event } from '../src/functions/event.js'
 import { Session, distanceInMetres } from '../src/functions/session.js'
+import { cors } from '../lib/cors.js'
 import {
   God,
   SELF_FIELDS,
@@ -32,11 +34,15 @@ const SELF_ACTIONS = {
   user: ['find', 'create', 'update'],
   community: ['memberOf', 'create', 'join'],
   member: ['create', 'find'],
+  // Only the names of the people who lead, never the whole roster — that stays a leader's read.
+  admin: ['hosts'],
   event: ['record', 'checkin'],
   session: ['open', 'live'],
 }
 
 export default async function handler(req, res) {
+  // Answer a cross-origin preflight before authenticate, which is POST-only and would 405 it.
+  if (cors(req, res)) return
   const auth = await authenticate(req, res)
   if (!auth) return
   const { token } = auth
@@ -405,6 +411,28 @@ export default async function handler(req, res) {
         community_id: params.community_id,
       })
       return res.status(200).json({ data: openings })
+    }
+    /*
+      Who runs this community, for the member's dashboard: its admin(s) and its leaders, by name.
+      Any member may ask — the people who lead a fellowship are not secret from the people in it —
+      so the only gate is that the caller belongs to the community, read off the token rather than
+      the body. The answer carries names and roles and no email; the roster that carries addresses
+      is a leader's read, opened at /api/leader.
+    */
+    if (action === 'admin' && params.function === 'hosts') {
+      if (!params.community_id) {
+        return res
+          .status(400)
+          .json({ error: 'params.community_id is required to read who leads a community' })
+      }
+      const link = await links.find(email, params.community_id)
+      if (!link) {
+        return res
+          .status(403)
+          .json({ error: 'only a member of that community can read who leads it' })
+      }
+      const people = await new AdminDashboard(god.url, god.key).hosts(params.community_id)
+      return res.status(200).json({ data: people })
     }
   }
 

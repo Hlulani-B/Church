@@ -87,6 +87,17 @@ function shape({ testimony_id, user_email, date, body }, known) {
   }
 }
 
+// One Supabase client for the whole page. Auth lives in Firebase now, so this browser
+// client only reads rows with the public anon key — it never signs anyone in. Turning off
+// session persistence and URL detection stops each instance from standing up its own
+// GoTrueClient and probing the popup window, which was the source of the
+// "Multiple GoTrueClient instances" and COOP "window.closed" warnings.
+let client
+function sharedClient(url, key) {
+  if (!client) client = createClient(url, key, { auth: { persistSession: false, detectSessionInUrl: false } })
+  return client
+}
+
 export class TestimoniesFetch {
   constructor(
     url = import.meta.env.VITE_SUPABASE_URL,
@@ -95,7 +106,7 @@ export class TestimoniesFetch {
     if (!url || !key) {
       throw new Error('VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are not set in .env.local')
     }
-    this.client = createClient(url, key)
+    this.client = sharedClient(url, key)
     this.people = new AdminDashboardFetch()
   }
 

@@ -1,4 +1,5 @@
 import { Session } from '../src/functions/session.js'
+import { cors } from '../lib/cors.js'
 import {
   God,
   authenticate,
@@ -34,6 +35,8 @@ const LEADER_ACTIONS = {
 }
 
 export default async function handler(req, res) {
+  // Answer a cross-origin preflight before authenticate, which is POST-only and would 405 it.
+  if (cors(req, res)) return
   const auth = await authenticate(req, res)
   if (!auth) return
   const { token } = auth
@@ -127,10 +130,9 @@ export default async function handler(req, res) {
       The two coordinates are required, and that is deliberate rather than tidy. They are what a
       check-in is measured against — the distance from this point is the whole answer to somebody
       entering a PIN they were told by a friend, or typing one from a different town — so a session
-      with no place is a session that cannot refuse a cheat. The gathering has to be named for the
-      same kind of reason: `event.event_name` is not nullable and is part of what makes an
-      attendance row unique, so an unnamed session could not record anybody at it, its own creator
-      included.
+      with no place is a session that cannot refuse a cheat. The gathering, by contrast, need not
+      be named: `event.event_name` is not nullable and helps make an attendance row unique, so one
+      left blank is filed under a standing default rather than refused.
     */
     if (action === 'session' && params.function === 'create') {
       if (!/^\d{4}$/.test(String(params.pin || ''))) {
@@ -138,12 +140,12 @@ export default async function handler(req, res) {
           .status(400)
           .json({ error: 'params.pin must be the four digits this server drew' })
       }
-      const event_name = String(params.event_name || '').trim()
-      if (!event_name) {
-        return res.status(400).json({
-          error: 'params.event_name is required: a session that names no gathering records nobody',
-        })
-      }
+      /*
+        The gathering's name is optional. Its column is not nullable and helps make an attendance
+        row unique, so a session opened without one is filed under a standing default — the register
+        still has something to call the day, and naming it properly is a nicety, not a gate.
+      */
+      const event_name = String(params.event_name || '').trim() || 'Gathering'
       const started = String(params.started_at || '')
       const ended = String(params.ended_at || '')
       const startDate = new Date(started)

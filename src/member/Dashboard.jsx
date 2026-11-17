@@ -7,9 +7,11 @@ import BackToCommunities from "../components/back.jsx";
 import CheckIn from "../components/checkin.jsx";
 import SessionLive from "../components/session_live.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
+import { AdminDashboardFetch } from "../page_functions/admin_dashboard.js";
 
 const accounts = new Auth();
 const attendance = new AttendanceFetch();
+const leadership = new AdminDashboardFetch();
 
 const css = `
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;1,500&display=swap");
@@ -36,6 +38,13 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au .links{display:flex;flex-wrap:wrap;gap:10px;margin:32px 0 0}
 .au .links button{background:#fff;color:#111;border:1px solid #111;border-radius:2px;padding:12px 22px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
 .au .links button:hover{background:#111;color:#fff}
+
+/* Who runs this fellowship, shown by name to every member. A quiet line under the heading, not a
+   card: it answers a question a member might have, and asks for nothing back. */
+.au .who{margin:24px 0 0;display:flex;flex-direction:column;gap:7px}
+.au .who-row{margin:0;font-size:16px;display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}
+.au .who-role{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;min-width:62px}
+.au .who-names{color:var(--text);font-family:"Playfair Display",Georgia,"Times New Roman",serif}
 
 .au .note{background:#f4f4f4;border-left:3px solid #111;padding:12px 16px;font-size:14px;margin:22px 0 0}
 .au .note.bad{border-left-color:#a11111}
@@ -97,6 +106,8 @@ export default function MemberDashboard() {
   const [note, setNote] = useState("");
   // The notice keeps its own refusal, so a failed write does not hide the box that made it.
   const [noticeError, setNoticeError] = useState("");
+  // The names of the people who lead this community, read once it is known which one this is.
+  const [hosts, setHosts] = useState([]);
 
   const admin = adminState({ email: signedIn?.email }, route);
   const communityId = admin.community_id;
@@ -117,6 +128,23 @@ export default function MemberDashboard() {
       setNoSession(!user);
     });
   }, []);
+
+  /*
+    Who leads this community. A member's dashboard may name the people who run the fellowship, so
+    /api/self answers admin(s) and leaders by name to anybody inside it — and the read is allowed to
+    fail quietly: a dashboard that cannot reach its leaders still shows the absence box and check-in.
+  */
+  useEffect(() => {
+    if (!communityId) return;
+    let alive = true;
+    leadership
+      .getHosts(communityId)
+      .then((rows) => alive && setHosts(rows || []))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [communityId]);
 
   /*
     Two boxes are typed — a day and, if wanted, a reason — and neither is whether anybody came, nor
@@ -156,6 +184,10 @@ export default function MemberDashboard() {
     }
   }
 
+  const fullName = (one) => [one.name, one.surname].filter(Boolean).join(" ").trim();
+  const admins = hosts.filter((one) => one.role === "admin");
+  const leaders = hosts.filter((one) => one.role === "leader");
+
   if (!signedIn) {
     return (
       <div className="au loading">
@@ -191,6 +223,28 @@ export default function MemberDashboard() {
         <h1 className="serif">{heading.name || "This community"}</h1>
         <p className="sub">{admin.email}</p>
 
+        {/* Attendance comes first: whatever is being taken right now, and the box to answer it, sit
+            above everything else so nobody has to scroll to learn the room is being counted. */}
+        {communityId && <SessionLive community_id={communityId} />}
+        {communityId && <CheckIn community_id={communityId} email={admin.email} />}
+
+        {communityId && (admins.length > 0 || leaders.length > 0) && (
+          <div className="who">
+            {admins.length > 0 && (
+              <p className="who-row">
+                <span className="who-role">Admin</span>
+                <span className="who-names">{admins.map(fullName).filter(Boolean).join(", ")}</span>
+              </p>
+            )}
+            {leaders.length > 0 && (
+              <p className="who-row">
+                <span className="who-role">Leaders</span>
+                <span className="who-names">{leaders.map(fullName).filter(Boolean).join(", ")}</span>
+              </p>
+            )}
+          </div>
+        )}
+
         {communityId && (
           <div className="links">
             <button
@@ -201,8 +255,6 @@ export default function MemberDashboard() {
             </button>
           </div>
         )}
-
-        {communityId && <SessionLive community_id={communityId} />}
 
         {!communityId ? (
           <div className="note">
@@ -217,7 +269,7 @@ export default function MemberDashboard() {
               yet. The gathering itself is the one the leader has opened a session for on that day,
               so you only choose the day. A reason is optional, and when you give one it is in your
               own words — the box offers the usual five, and takes anything you type. This is your
-              own notice: coming is said with the four digits below rather than here, and a
+              own notice: coming is said with the four digits above rather than here, and a
               gathering you are recorded as being at keeps that record.
             </p>
             <div className="fields">
@@ -257,8 +309,6 @@ export default function MemberDashboard() {
             {note && !noticeError && <div className="note">{note}</div>}
           </form>
         )}
-
-        {communityId && <CheckIn community_id={communityId} email={admin.email} />}
       </main>
     </div>
   );

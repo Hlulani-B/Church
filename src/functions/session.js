@@ -232,8 +232,30 @@ export class Session {
       .gte('ended_at', now.toISOString())
       .order('started_at', { ascending: false })
     if (error) throw error
+    /*
+      The fellowship wants to know who is taking attendance, not just that somebody is, so each row
+      carries the name of the person who opened it. It is read off the users table by the creator's
+      address in one go rather than row by row, and it is only ever a name — the address itself is
+      not handed to every phone, and the PIN stays back regardless.
+    */
+    const creators = [...new Set((data || []).map((one) => one.created_by).filter(Boolean))]
+    let names = {}
+    if (creators.length) {
+      const { data: people, error: peopleError } = await this.client
+        .from('users')
+        .select('email, name, surname')
+        .in('email', creators)
+      if (peopleError) throw peopleError
+      names = Object.fromEntries(
+        (people || []).map(
+          (person) => [person.email, [person.name, person.surname].filter(Boolean).join(' ').trim()],
+        ),
+      )
+    }
     return (data || []).map((one) => ({
       ...one,
+      // The person who opened this check-in, so the notice can name them. '' if the row is unknown.
+      leader_name: names[one.created_by] || '',
       // Whether this session's window holds at this instant, as opposed to being scheduled later.
       live: new Date(one.started_at) <= now && new Date(one.ended_at) >= now,
       near_required:

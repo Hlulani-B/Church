@@ -24,7 +24,7 @@ const TIER = {
   user: 'self',
   community: (fn) => (fn === 'find' ? 'admin' : 'self'),
   member: (fn) => (fn === 'remove' ? 'admin' : 'self'),
-  admin: (fn) => (fn === 'roster' ? 'leader' : 'admin'),
+  admin: (fn) => (fn === 'roster' ? 'leader' : fn === 'hosts' ? 'self' : 'admin'),
   attendance: 'leader',
   event: 'self',
   session: (fn) => (fn === 'open' || fn === 'live' ? 'self' : 'leader'),

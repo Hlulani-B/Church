@@ -49,7 +49,7 @@ const css = `
 .sl .card{border:1px solid #e3e3e3;border-left:4px solid #111;border-radius:2px;padding:14px 18px;background:#fafafa}
 .sl .card.soon{border-left-color:#bdbdbd}
 .sl .head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0}
-.sl .head .what{font-family:"Playfair Display",Georgia,"Times New Roman",serif;font-size:19px;font-weight:500;margin:0}
+.sl .head .what{font-family:"Playfair Display",Georgia,"Times New Roman",serif;font-size:21px;font-weight:600;margin:0}
 .sl .tag{font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;padding:2px 10px;border:1px solid #111;border-radius:999px}
 .sl .tag.open{background:#111;color:#fff}
 .sl .tag.upcoming{color:#666;border-color:#bdbdbd}
@@ -57,19 +57,23 @@ const css = `
 `;
 
 function Card({ one }) {
+  // Who is taking attendance, said by name when the server could resolve it and plainly otherwise.
+  const who = one.leader_name || "A leader";
   return (
     <div className={`card${one.live ? "" : " soon"}`}>
       <p className="head">
-        <span className="what">{one.event_name || "A gathering"}</span>
+        <span className="what">
+          {one.live ? `${who} is taking attendance` : one.event_name || "A gathering"}
+        </span>
         <span className={`tag ${one.live ? "open" : "upcoming"}`}>
           {one.live ? "Open now" : "Scheduled"}
         </span>
       </p>
       <p className="who">
         {one.live
-          ? `Attendance is being taken — ${clock(one.started_at)} to ${clock(one.ended_at)}, ${reach(
-              one,
-            )}. Use the check-in box below to mark yourself present.`
+          ? `Enter the PIN below to mark yourself present at ${
+              one.event_name || "the gathering"
+            } — open ${clock(one.started_at)} to ${clock(one.ended_at)}, ${reach(one)}.`
           : `Scheduled for ${day(one.started_at)}, ${clock(one.started_at)} to ${clock(
               one.ended_at,
             )}. The check-in opens here when it starts.`}

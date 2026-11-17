@@ -69,6 +69,29 @@ export class AdminDashboard {
   }
 
   /*
+    The people a plain member is allowed to see the names of: this community's admin(s) and its
+    leaders, and no other member. The same join as the roster kept to the two roles that lead, and
+    the email left out of the answer on purpose — who runs a fellowship is not secret from the
+    people in it, but every other member's address is a leader's read. Admins first, then leaders.
+  */
+  async hosts(community_id) {
+    this.#id(community_id)
+    const { data, error } = await this.client
+      .from('community_members')
+      .select('email, role, users!inner(name, surname)')
+      .eq('community_id', community_id)
+      .in('role', ['admin', 'leader'])
+      .order('role')
+      .order('email')
+    if (error) throw error
+    return data.map(({ role, users }) => ({
+      role,
+      name: users?.name ?? '',
+      surname: users?.surname ?? '',
+    }))
+  }
+
+  /*
     Moving one person within this community: the address is only ever read back off the
     community it is being changed in, and only /api/admin decides whether the caller is allowed
     to ask. The updated link comes back rather than the role that was typed, so a screen says

@@ -158,19 +158,33 @@ export default async function handler(req, res) {
       if (endDate <= startDate) {
         return res.status(400).json({ error: 'that session ends before it starts' })
       }
-      const latitude = Number(params.latitude)
-      const longitude = Number(params.longitude)
-      if (
-        !Number.isFinite(latitude) ||
-        !Number.isFinite(longitude) ||
-        Math.abs(latitude) > 90 ||
-        Math.abs(longitude) > 180
-      ) {
+      /*
+        A session that takes check-ins from anywhere does not care where the leader's device is
+        standing — a phone that refuses to say where it is must not be allowed to block opening
+        it. The pair is normalised to null when the reading is refused or absent, so the session
+        row and the creator's own attendance row both say "no place" rather than a silent NaN that
+        every later distance check would have to remember to reject.
+      */
+      const rawLat =
+        params.latitude === null || params.latitude === undefined ? NaN : Number(params.latitude)
+      const rawLng =
+        params.longitude === null || params.longitude === undefined
+          ? NaN
+          : Number(params.longitude)
+      const allow_any_radius = params.allow_any_radius === true
+      const hasPlace =
+        Number.isFinite(rawLat) &&
+        Number.isFinite(rawLng) &&
+        Math.abs(rawLat) <= 90 &&
+        Math.abs(rawLng) <= 180
+      if (!hasPlace && !allow_any_radius) {
         return res.status(400).json({
           error:
-            'params.latitude and params.longitude are both needed, as this device reported them',
+            'params.latitude and params.longitude are both needed, as this device reported them — or turn on “Allow check-in from anywhere”',
         })
       }
+      const latitude = hasPlace ? rawLat : null
+      const longitude = hasPlace ? rawLng : null
       /*
         How near the room a check-in has to come from, in metres, and whether that question is
         asked at all. Both are the leader's to decide, and decided in the room: a hall where the
@@ -180,7 +194,6 @@ export default async function handler(req, res) {
         outcome of a leader who set no number; and a radius kept alongside `allow_any_radius` is
         stored but unused, so switching the rule back off later returns to what was first set.
       */
-      const allow_any_radius = params.allow_any_radius === true
       const radius =
         params.radius === null || params.radius === undefined || params.radius === ''
           ? null

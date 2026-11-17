@@ -169,7 +169,11 @@ export default function TakeAttendancePage() {
       );
       return;
     }
-    if (place.state !== "held") {
+    // A leader who has said distance does not matter cannot be blocked by a device that will not
+    // answer where it is. Without “anywhere”, the reading is what a check-in will later be measured
+    // against, so its absence is exactly the thing that must be refused here rather than at the
+    // server (where it would surface after the leader had already tried to open the session).
+    if (!anywhere && place.state !== "held") {
       setError(
         place.message ||
           "The position of this room has to be read before a session can be opened for it.",
@@ -179,7 +183,7 @@ export default function TakeAttendancePage() {
     setBusy(true);
     setError("");
     try {
-      await sessions.openSession({
+      const opened = await sessions.openSession({
         community_id: communityId,
         pin,
         event_name: name.trim(),
@@ -190,18 +194,19 @@ export default function TakeAttendancePage() {
         date: started.slice(0, 10),
         started_at: new Date(started).toISOString(),
         ended_at: new Date(ended).toISOString(),
-        latitude: place.latitude,
-        longitude: place.longitude,
+        latitude: place.state === "held" ? place.latitude : null,
+        longitude: place.state === "held" ? place.longitude : null,
         radius: radius.trim() === "" ? null : metres,
         allow_any_radius: anywhere,
       });
       /*
-        The session is open, so this page has done its one job and leaves. Back on the dashboard the
-        room is watched from here on: it listens for the check-in just opened, shows its PIN to be
-        read out, and lets it be cancelled or its radius changed. Going back — rather than parking
-        a confirmation here — returns whoever opened it to the page that keeps listening.
+        The session is open. Do NOT navigate away from here — the dashboard's own attendance box
+        polls only every fifteen seconds, so a leader who bounced back would see nothing about
+        what they had just opened, and would rightly think the click had done nothing. Hold the
+        row here and read the four digits off this page; the walk back to the dashboard is a
+        button the leader presses when they are done telling the room.
       */
-      navigate(-1);
+      setOpen(opened);
       return;
     } catch (cause) {
       setError(cause.message);
@@ -255,6 +260,50 @@ export default function TakeAttendancePage() {
             No community was chosen, so there is nothing to open a session for. Go back, click a
             community, and take its attendance.
           </div>
+        ) : open ? (
+          /*
+            The moment the leader has been waiting for since they pressed Open session. This panel
+            replaces the form the second the server answers, so the four digits are in front of them
+            before they so much as think about looking at the dashboard — no fifteen-second poll
+            stands between "I opened it" and "here, room, say these numbers".
+          */
+          <>
+            <p className="eyebrow">Session opened</p>
+            <h1 className="serif">
+              Read these <em>four digits</em> out.
+            </h1>
+            <div className="pin" style={{ marginTop: 24 }}>
+              <span className="digits">{open.pin}</span>
+            </div>
+            <p className="sub" style={{ marginTop: 24 }}>
+              <strong>{open.event_name}</strong> is open from {clock(open.started_at)} to{" "}
+              {clock(open.ended_at)}, taking check-ins{" "}
+              {open.allow_any_radius
+                ? "from anywhere"
+                : `within ${open.radius} m of where you are standing`}.
+              You are already written down as attending it.
+            </p>
+            <p className="fine">
+              The room enters these digits on their dashboards. This page keeps them here as long as
+              you want to read them a second time; when the room has them, go back.
+            </p>
+            <div className="row">
+              <button className="btn" type="button" onClick={() => navigate(-1)}>
+                Back to dashboard
+              </button>
+              <button
+                className="btn ghostly"
+                type="button"
+                onClick={() => {
+                  setOpen(null)
+                  setPin("")
+                  setName("")
+                }}
+              >
+                Open another
+              </button>
+            </div>
+          </>
         ) : (
           <>
             <h3>1 · The PIN</h3>
@@ -365,21 +414,11 @@ export default function TakeAttendancePage() {
               </p>
 
               {error && <div className="note bad">{error}</div>}
-              {open && (
-                <div className="note">
-                  <strong>{open.event_name}</strong> is open for check-in on PIN{" "}
-                  <strong>{open.pin}</strong> from {clock(open.started_at)} to{" "}
-                  {clock(open.ended_at)}, taken from within{" "}
-                  {open.allow_any_radius ? "any distance at all" : `${open.radius} m of this point`}.
-                  You are written down as attending it. Tell the room the PIN, and this page can go.
-                </div>
-              )}
-
               <div className="row">
                 <button
                   className="btn"
                   type="submit"
-                  disabled={busy || !pin || place.state !== "held"}
+                  disabled={busy || !pin || (!anywhere && place.state !== "held")}
                 >
                   {busy ? "Opening…" : "Open session"}
                 </button>

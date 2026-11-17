@@ -198,7 +198,17 @@ export default async function handler(req, res) {
         community_id: params.community_id,
         pin,
       })
-      const open = openings
+      /*
+        A scanned QR names one gathering, not just its four digits, so the check-in is held to the
+        row the code points at. A PIN that happens to repeat against a stale id, or an id carried
+        over from a different community, simply finds nothing here — a code and a set of digits
+        that do not line up on the same row is a refusal, not a coin-flip between candidates.
+      */
+      const requested = params.session_id ? String(params.session_id).trim() : ''
+      const named = requested
+        ? openings.filter((one) => one.session_id === requested)
+        : openings
+      const open = named
         .filter(
           (one) =>
             one.cancel !== true &&
@@ -207,12 +217,17 @@ export default async function handler(req, res) {
         )
         .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))[0]
       if (!open) {
-        if (!openings.length) {
+        if (requested && !named.length) {
+          return res
+            .status(400)
+            .json({ error: 'that code and those digits do not name a check-in here' })
+        }
+        if (!named.length) {
           return res
             .status(400)
             .json({ error: 'no check-in is open in this community on those four digits' })
         }
-        if (openings.every((one) => one.cancel === true)) {
+        if (named.every((one) => one.cancel === true)) {
           return res
             .status(400)
             .json({ error: 'that check-in was called off, so its PIN no longer records anybody' })
@@ -223,9 +238,9 @@ export default async function handler(req, res) {
           the two. Which of the two it is comes back as its own refusal, and the leader standing
           in front of the room is the one who can say the hour.
         */
-        const last = openings.reduce(
+        const last = named.reduce(
           (best, one) => (new Date(one.ended_at) > new Date(best.ended_at) ? one : best),
-          openings[0],
+          named[0],
         )
         return res.status(400).json({
           error:

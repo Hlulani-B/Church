@@ -1,3 +1,7 @@
 {
-  "rewrites": [{ "source": "/((?!api/|@)[^.]*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/qr", "destination": "/qr/qr.html" },
+    { "source": "/qr/", "destination": "/qr/qr.html" },
+    { "source": "/((?!api/|@)[^.]*)", "destination": "/index.html" }
+  ]
 }

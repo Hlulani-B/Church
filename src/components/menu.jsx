@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
 import { forgetAdmin } from "../admin/state.js";
+import Guide, { shouldAutoOpen, markSeen } from "./guide.jsx";
 
 const accounts = new Auth();
 
@@ -22,15 +23,38 @@ const css = `
 .kp-trigger{background:none;border:1px solid #d9d9d9;border-radius:2px;padding:7px 12px;font-size:15px;line-height:1;cursor:pointer;color:#111}
 `;
 
+// Where the URL is on the page, so the Guide can pick sensible content without every caller
+// having to name its role explicitly. A page that lives above the routing (e.g. /qr, /feedback)
+// passes guideRole; a page that fits one of these patterns does not have to.
+function inferRole() {
+  if (typeof window === "undefined") return null;
+  const path = window.location.pathname;
+  if (path.startsWith("/admin-")) return "admin";
+  if (path.startsWith("/leader-")) return "leader";
+  if (path.startsWith("/member-")) return "member";
+  if (path === "/community") return "communities";
+  if (path === "/feedback") return "feedback";
+  if (path === "/take-attendance") return "leader";
+  return null;
+}
+
 /*
   The slide-over every signed-in page carries. `items` is what a particular screen puts
   above Profile and Log out — src/admin/menu.jsx is the only caller that passes any — and
   each item's `state` travels with the navigation, the same way a community card hands the
   community to the page it opens.
+
+  The Guide link sits at the top of the list because it is the one thing every role wants
+  when they have been away from the app for a few weeks. `guideRole` names which content
+  to open; without it, the role is inferred from the current path. First-visit auto-open is
+  handled here so no page has to do it themselves — a dashboard mounts, we check the flag,
+  and if it is unset for this role the modal slides in once.
 */
-export default function Menu({ heading = "Menu", items = [] }) {
+export default function Menu({ heading = "Menu", items = [], guideRole }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const role = guideRole || inferRole();
+  const [guideOpen, setGuideOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -40,6 +64,16 @@ export default function Menu({ heading = "Menu", items = [] }) {
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, [open]);
+
+  // One auto-open per role per browser: the first page you land on that carries this menu
+  // raises the guide, and closing it writes the flag. A page re-mount or a route change does
+  // not re-open it because the flag has already been set by markSeen.
+  useEffect(() => {
+    if (!role) return;
+    if (!shouldAutoOpen(role)) return;
+    const t = setTimeout(() => setGuideOpen(true), 400);
+    return () => clearTimeout(t);
+  }, [role]);
 
   function go(to, state) {
     setOpen(false);
@@ -53,6 +87,11 @@ export default function Menu({ heading = "Menu", items = [] }) {
     // community and address the admin screens were carrying go with them.
     forgetAdmin();
     navigate("/login", { replace: true });
+  }
+
+  function openGuide() {
+    setOpen(false);
+    if (role) setGuideOpen(true);
   }
 
   return (
@@ -72,15 +111,27 @@ export default function Menu({ heading = "Menu", items = [] }) {
           </button>
         </div>
         <nav>
+          {role && (
+            <button type="button" onClick={openGuide}>Guide</button>
+          )}
           {items.map((one) => (
             <button key={one.to} type="button" onClick={() => go(one.to, one.state)}>
               {one.label}
             </button>
           ))}
+          <button type="button" onClick={() => go("/feedback")}>Feedback</button>
           <button type="button" onClick={() => go("/profile")}>Profile</button>
           <button className="ghost" type="button" onClick={leave}>Log out</button>
         </nav>
       </aside>
+
+      {role && (
+        <Guide
+          role={role}
+          open={guideOpen}
+          onClose={() => { markSeen(role); setGuideOpen(false); }}
+        />
+      )}
     </>
   );
 }

@@ -470,6 +470,12 @@ export default function AdminDashboard() {
             >
               View testimonies
             </button>
+            <button
+              type="button"
+              onClick={() => navigate("/admin-feedback")}
+            >
+              Read feedback
+            </button>
           </div>
         )}
 

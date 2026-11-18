@@ -92,6 +92,10 @@ So the split today is:
 | Member dashboard — the not-attending notice and the PIN check-in | `/api/self` |
 | Member dashboard — the live/scheduled check-in notice | `/api/self` `session` `live` |
 | Leader/admin dashboards — watching and managing open check-ins | `/api/leader` `session` `manage` |
+| Take attendance — leader opens a session, sees its PIN and QR | `/api/leader` `session` `create` |
+| `/qr` landing — phone that scanned the QR; also signs a first-timer up inline | Firebase auth + `/api/self` `session` `checkin`, `community` `join` |
+| Feedback — the form every member can reach from the menu | `/api/self` `feedback` `create` |
+| Admin feedback — the whole pile, app-wide | `/api/admin` `feedback` `all` |
 
 The leader pages are the admin ones with nothing to click: the roster arrives without the
 ⋮ menu that changes a role or takes somebody out, and no leader page asks the function for
@@ -187,6 +191,20 @@ instead.
   `params.changes` down to `name` and `surname` before the update is sent, so an `email`
   in the request is dropped there rather than reaching the table. The address is only
   ever read from the verified sign-in.
+- **A member marking themselves present goes through the server, and cannot lie about it.**
+  Two doors — the card on `session_live.jsx` and the `/qr` landing — both POST the same
+  `session` `checkin` call to `/api/self`, which matches `(community_id, pin)` with the
+  `cancel` filter, checks the window against the server's clock, checks the haversine against
+  the session's `radius`, and either writes the row or refuses. A body that names
+  `user_email` is ignored: the address on the row is the one the ID token carried. A second
+  POST after the first has landed returns the original `checked_in_at` with `already: true`
+  rather than a duplicate row, backed by the `unique (community_id, event_date, event_name,
+  user_email)` constraint on `event`. The full flow is written up in
+  [Check-in and QR flow](check-in.md).
+- **`feedback` is app-wide and the write ignores what the body claims.** `feedback` `create`
+  sits on the self tier, `feedback` `all` on the admin tier — but the admin gate for it is
+  not `roleGate`, it is *"are you an admin of at least one community"*, because the table has
+  no `community_id` for a per-community question to ask. Details in [Feedback](feedback.md).
 
 ## What is not enforced yet
 
@@ -201,12 +219,12 @@ withheld. The first two are still ahead of us, not behind us:
 - **`addTestimony` records whatever `user_email` the caller passes**, and a `date` that
   need not be today, because the insert runs in the browser and nothing between that page
   and the table checks either.
-- **There is no database function that checks the PIN, the time window and the distance
-  before recording a check-in.** No `supabase.rpc(...)` call exists anywhere in `src/` or
-  `api/`. The columns that such a function would read are all there — `session.pin`,
-  `started_at`, `ended_at`, `latitude`, `longitude`, and `event.checked_in_at`,
-  `checkin_latitude`, `checkin_longitude`, `recorded_by`, `session_id` — and no screen
-  writes any of them.
+- **The PIN, the time window and the distance are checked in the request handler, not by a
+  Postgres function.** No `supabase.rpc(...)` call exists anywhere in `src/` or `api/` — the
+  rule lives in `src/functions/session.js` and is enforced every time a browser calls
+  `session` `checkin`. That is fine for every path the app itself takes, and it is not fine for
+  a caller with the anon key that talks to PostgREST directly, which is why `event` still has
+  no RLS and this rule has no teeth in front of the table.
 - **Session creation is guarded in the function, not the database.** The take-attendance page
   opens one through `api/leader.js`, which puts `session` on the leader tier — `roleGate` demands
   a `leader` or `admin` link for the `community_id` before the create runs — so a plain member's
@@ -236,22 +254,22 @@ withheld. The first two are still ahead of us, not behind us:
   reason comes back as `23514` and only the five suggested words write. Nothing in the app can do
   this: PostgREST answers queries and inserts, not DDL, and there is no `psql`, CLI or Management
   API credential in the project.
-- **A member still cannot mark themselves attending.** The only screen that writes attendance
-  is the notice at the top of the admin and leader attendance pages, it is about whoever is
-  signed in, and it always answers no. `src/member/Dashboard.jsx` is still a placeholder, so a
-  plain member has no page to make even that notice from — today it is reachable only by
-  somebody who leads or administers the community. Nothing in the app writes `attend = true`,
-  and nobody is checking a whole room in from phones, which is what the PIN function above is
-  for.
+- **Nothing throttles the check-in endpoint.** A browser that guessed four digits by trying
+  every combination hits `/api/self` as fast as its network allows, and the function has no
+  rate limit and no lockout — the only cost is a wrong-PIN refusal per attempt. Vercel's
+  per-function concurrency and the project's request quota stand in front of the worst case,
+  but neither is a designed guard. A real fix is a per-(email, pin) attempt counter kept
+  either in the function's edge config or on the `session` row, and it is worth building
+  before the app is used by a community large enough for someone to bother.
 
-That last point is the one to settle before the burst arrives, because it decides where
-the rule lives. The plan is for a member to POST a check-in straight from the page — no
-function call per person in the room — which means the row is written by the browser and
-has to be policed by the database. So before that page is switched on: RLS on `event`
-with a policy that a member's insert can only carry their own `user_email`, and the PIN,
-time window and distance as a Postgres function that the page calls instead of an insert
-it can forge. `testimony` wants the same treatment: RLS, and the address taken from the
-sign-in rather than the request.
+The closing paragraph is about the check-in path, and it matters now that the path is real: a
+member's phone does write a yes as soon as the PIN, the window and the distance agree. That
+write goes through `api/self.js` today, so every rule is checked. What is not yet true is
+that the same rule holds for a caller who talks to PostgREST directly with the anon key. The
+fix is RLS on `event` with a policy that a member's insert can only carry their own
+`user_email`, and the PIN/window/distance check moved into a Postgres function that the
+endpoint calls rather than a JavaScript class the endpoint happens to import. `testimony`
+wants the same treatment: RLS, and the address taken from the sign-in rather than the request.
 
 ## Postgres
 

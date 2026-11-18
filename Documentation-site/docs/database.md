@@ -13,6 +13,7 @@ Run it once in the Supabase SQL Editor.
 | `session` | A check-in session opened by a leader: a `pin`, the gathering it was opened for, a date, a window and the place it was opened from. |
 | `event` | One row per member per event: whether they attended, the reason if they did not, and who recorded it. |
 | `testimony` | A testimony body written by a member for a given date. |
+| `feedback` | One row per submission about the app itself. App-wide, not per community — see [Feedback](feedback.md). |
 
 ## Schema
 
@@ -54,6 +55,10 @@ create table session (
   longitude double precision,
   /* what the leader called the gathering this session is for */
   event_name text,
+  /* how near the room a phone has to be, in metres. null means the leader did not set one */
+  radius integer,
+  /* true means distance is not asked about at all, whatever radius says */
+  allow_any_radius boolean not null default false,
   /* a check-in called off by whoever opened it, or an admin: it stops counting the moment it is true */
   cancel boolean not null default false,
   unique (community_id, date, pin)
@@ -84,6 +89,18 @@ create table testimony (
   user_email text not null references users(email) on delete cascade,
   date date not null default current_date,
   body text not null
+);
+
+/* one row per submission about the app itself — deliberately not tied to a community */
+create table feedback (
+  id bigint generated always as identity primary key,
+  stars smallint not null check (stars between 1 and 5),
+  email text,
+  solves_problem boolean not null,
+  improvements text,
+  additions text,
+  most_challenging text,
+  created_at timestamptz not null default now()
 );
 
 /* RLS is on for these four. It is left off for event and testimony. */
@@ -185,3 +202,24 @@ alter table session enable row level security;
   zero rows back from these RLS-protected tables; `new God()` passes the service key to
   every class, which is why page data arrives through `/api/self`, `/api/leader` or `/api/admin`
   and not directly.
+- `session.radius` and `session.allow_any_radius` decide whether a check-in is refused for
+  being too far from where the leader opened it. Both are set at `Session.create` time, both
+  are read by `Session.live` and `Session.checkIn`, and neither is required: a `null` `radius`
+  is *no distance limit* rather than a missing number, and `allow_any_radius` overrides any
+  `radius` that happens to be there. The class exposes a derived `near_required` boolean
+  (`allow_any_radius !== true && radius != null`) so a page does not have to remember the rule.
+  A table that predates either column takes them in one statement each:
+
+  ```sql
+  alter table session add column radius integer;
+  alter table session add column allow_any_radius boolean not null default false;
+  ```
+
+- `feedback` is the only table in the schema that is **not** tied to a `community_id`. It
+  carries one row per submission about the app itself, and any signed-in member may write to
+  it; only an admin of at least one community may read the pile. `email` is nullable and the
+  write path never trusts what a browser claims for it — the value that lands in the row is
+  the one the Firebase ID token carried, or `null` if the submitter left the "include my
+  email" checkbox off. There is no foreign key on it and no cascade; the row is signal about
+  the product rather than a record about a person, so it survives the person. Full write-up:
+  [Feedback](feedback.md).

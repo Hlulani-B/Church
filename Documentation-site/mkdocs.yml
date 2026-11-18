@@ -1,21 +1,69 @@
-site_name: Church Documentation
+site_name: Kopano — Church attendance
+site_description: A check-in and community app for small fellowships
+site_author: Hlulani Baloyi
+repo_url: https://github.com/Hlulani-B/Church
+edit_uri: edit/main/Documentation-site/docs/
 
 theme:
   name: material
   palette:
     - scheme: default
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - scheme: slate
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+  font:
+    text: Inter
+    code: JetBrains Mono
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Hlulani-B/Church
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 nav:
   - Home: index.md
-  - User Stories: user-stories.md
-  - Database: database.md
-  - Architecture: architecture.md
-  - Authentication: authentication.md
-  - Findings: findings.md
+  - Product:
+      - User stories: user-stories.md
+      - Onboarding and guides: onboarding.md
+  - Architecture:
+      - Overview: architecture.md
+      - Check-in and QR flow: check-in.md
+      - Feedback: feedback.md
+      - Testing: testing.md
+  - Data:
+      - Database: database.md
+      - Authentication: authentication.md
+      - Findings: findings.md

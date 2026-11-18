@@ -1,6 +1,87 @@
-# Church
+# Kopano
 
-Documentation for the Church project.
+A small attendance and community app for church fellowships. Somebody opens a check-in at the
+front of a room, everybody else marks themselves present from their phone — either by typing
+four digits or by scanning a QR — and the register writes one row per person per gathering.
+Between those two moments sit the parts that make it safe: a session window, a distance rule,
+a nullable `cancel` column that behaves like a boolean, and a service-role key that never
+leaves the server.
 
-Pages are added under `docs/` and registered in the `nav` section of
-`mkdocs.yml`.
+## What runs where
+
+```
+┌─────────────────┐        ┌───────────────────┐        ┌─────────────────┐
+│  Browser        │  POST  │  Vercel functions │ service│  Supabase       │
+│  React SPA +    ├───────►│  /api/self        ├───────►│  Postgres +     │
+│  /qr subapp     │  JSON  │  /api/leader      │ key    │  PostgREST      │
+│                 │        │  /api/admin       │        │                 │
+└──────┬──────────┘        └───────────────────┘        └─────────────────┘
+       │
+       │  Firebase ID token (bearer)
+       ▼
+┌─────────────────┐
+│  Firebase Auth  │
+└─────────────────┘
+```
+
+Three pages of that are worth dwelling on:
+
+- **The Firebase ID token is the only credential the browser holds.** Every server route
+  verifies it against Google's signing keys, and the `email` inside it is what the endpoint
+  trusts — never anything the body claims.
+- **The service role key lives in exactly one place** — the three `/api/*.js` handlers on
+  Vercel. It never appears in `dist/`, so the browser bundle cannot be picked apart to find it.
+- **One page talks to PostgREST directly** — the testimonies screens, because that page's read
+  pattern (paginate + search + client-side export) fits a direct connection better than a
+  serverless round trip. Everything else goes through the tiered endpoints.
+
+## The three auth tiers
+
+| Endpoint | Who it is for | Example calls |
+| --- | --- | --- |
+| `/api/self` | any signed-in member | check in with a PIN, join a community, record absence, list your own communities, submit feedback |
+| `/api/leader` | a `leader` or `admin` of the community | open a check-in, read the roster, read attendance for a gathering |
+| `/api/admin` | an `admin` of the community | assign a role, remove a member, change the join code, read all feedback |
+
+The tier map lives in `src/page_functions/god.js` on the browser side, and each endpoint
+carries its own whitelist on the server side. A request that guesses the wrong door is refused
+before the whitelist is checked, so no tier can borrow another's power.
+
+## Start here
+
+- :material-arrow-right: [Architecture](architecture.md) — the request path, the tiers, and what the trade-offs are
+- :material-arrow-right: [Check-in and QR flow](check-in.md) — how a session is opened, held, scanned and cancelled
+- :material-arrow-right: [Onboarding and guides](onboarding.md) — the per-role guide panel that lives in every menu
+- :material-arrow-right: [Feedback](feedback.md) — the app-level table, its page, and the admin's read
+- :material-arrow-right: [Testing](testing.md) — what vitest locks down on the check-in path
+- :material-arrow-right: [Database](database.md) — the tables and the columns that behave unexpectedly
+- :material-arrow-right: [Authentication](authentication.md) — Firebase in the browser, ID tokens on the server
+
+## What the app is not
+
+- Not a general church management suite. It knows about gatherings and who came to them, and
+  nothing else — no giving, no rota, no calendar.
+- Not a messaging app. Testimonies are posted and approved, but nothing pushes to a phone.
+- Not offline-first. Every check-in and every dashboard read goes to the server.
+
+## Running it locally
+
+```bash
+# 1. Clone the repo and install
+npm install
+
+# 2. Copy .env.local.example to .env.local and fill in the Supabase + Firebase values
+
+# 3. Run the site and the /api functions together — plain `npm run dev` will not mount
+#    the serverless handlers, so any page that reads will complain
+npm run dev:api
+
+# 4. Run the tests (unit + invariant checks; no network)
+npm test
+
+# 5. Build the two HTML entries the deploy actually serves
+npm run build
+```
+
+The build emits `dist/index.html` (the SPA) and `dist/qr/qr.html` (the phone-scan landing).
+One deploy, one Vercel project.

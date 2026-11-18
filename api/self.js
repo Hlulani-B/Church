@@ -38,6 +38,10 @@ const SELF_ACTIONS = {
   admin: ['hosts'],
   event: ['record', 'checkin'],
   session: ['open', 'live'],
+  // Any signed-in person may leave product feedback about the app itself. The table is not
+  // community-scoped, so no membership check applies; the address on the row comes from the
+  // token, and only if the caller opted in.
+  feedback: ['create'],
 }
 
 export default async function handler(req, res) {
@@ -450,6 +454,18 @@ export default async function handler(req, res) {
       })
       return res.status(200).json({ data: openings })
     }
+    /*
+      Product feedback travels under the caller's own hand, or under nobody's. `include_email`
+      is the tickbox on the form; if it is on, the address written into the row is the token's,
+      never anything the body said. If it is off, the column is null and the row is anonymous.
+      There is no community_id on this table — one admin's list is every fellowship's list —
+      so the only thing the caller can pick here is whether their name is on it.
+    */
+    if (action === 'feedback' && params.function === 'create') {
+      params = { ...params, email: params.include_email ? email : null }
+      delete params.include_email
+    }
+
     /*
       Who runs this community, for the member's dashboard: its admin(s) and its leaders, by name.
       Any member may ask — the people who lead a fellowship are not secret from the people in it —

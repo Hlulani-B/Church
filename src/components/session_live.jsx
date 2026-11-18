@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { SessionFetch } from "../page_functions/session.js";
 import { clock, askPosition } from "../page_functions/place.js";
+import { pushToast } from "./toast.jsx";
 
 const sessions = new SessionFetch();
 
@@ -92,8 +93,18 @@ function Card({ one, community_id, onMarked }) {
         Marked is marked: the card goes now rather than on the next poll. The same answer arrives
         on every later read — the server no longer lists a session this register already holds —
         so waiting fifteen seconds to forget what just happened would only look like a freeze.
+        A short toast then slides in two seconds after, into the space the card left, saying the
+        same thing more quietly. The delay is deliberate: an instant toast would arrive on top of
+        the disappearing card and read as a flicker, whereas two seconds lets the removal settle
+        and the notification then confirm it.
       */
       onMarked(one.session_id);
+      pushToast({
+        title: came.already ? "Already marked" : "Register marked",
+        detail: `${came.event_name || "This gathering"} · ${clock(came.checked_in_at)}`,
+        delay: 2000,
+        life: 6000,
+      });
       return;
     } catch (cause) {
       const where = !held && read.state === "refused" ? ` ${read.message}` : "";

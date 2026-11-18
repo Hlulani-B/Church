@@ -28,6 +28,7 @@ const TIER = {
   attendance: 'leader',
   event: 'self',
   session: (fn) => (fn === 'open' || fn === 'live' ? 'self' : 'leader'),
+  feedback: (fn) => (fn === 'all' ? 'admin' : 'self'),
 }
 const PATH = { self: '/api/self', leader: '/api/leader', admin: '/api/admin' }
 

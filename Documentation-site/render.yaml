@@ -1,30 +1,23 @@
 # Render blueprint for the documentation site.
 #
-# One static service, nothing else: this site is built to plain HTML by MkDocs and has no API of
-# its own, so there are no secrets to supply and no database to provision. The app itself still
-# lives on Vercel (see vercel.json at the repository root) — this file deliberately does not touch
-# it, so creating the Render service cannot affect a running deploy.
+# One static service: MkDocs builds plain HTML, so there are no secrets and no database.
+# The app itself stays on Vercel, and this file does not touch it.
 #
-# To use it: New + → Blueprint in the Render dashboard and point it at this repository, then set
-# the Repository Root to Documentation-site. Render reads this file from there, which keeps the
-# build and publish paths below relative to the folder they actually belong in.
+# To use it: New + then Blueprint in the Render dashboard, and point it at this repository.
 
-spec: "2021-08-15"
+services:
+  - type: web
+    name: kopano-docs
+    runtime: static
+    rootDir: Documentation-site
 
-apps:
-  - name: kopano-docs
-    type: static
-    plan: free
-    runtime: python
-
-    # requirements.txt names mkdocs-material, which pulls MkDocs itself in with it. The version
-    # is pinned there rather than here so the theme and its generator cannot drift apart between
-    # a local `mkdocs serve` and a production build.
+    # requirements.txt names mkdocs-material, which pulls MkDocs in with it.
+    # --strict turns a broken internal link into a failed build.
     buildCommand: pip install -r requirements.txt && mkdocs build --strict
 
-    # mkdocs.yml sets use_directory_urls: false, so site/ is a flat folder of .html files that a
-    # static host can serve without any rewrite rule to invent an index.html. --strict above is
-    # what stops a broken internal link from shipping: it turns a warning into a failed build.
-    publishPath: site
+    # mkdocs.yml sets use_directory_urls: false, so site/ is a flat folder of .html files.
+    staticPublishPath: site
 
-    healthCheckPath: /index.html
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3

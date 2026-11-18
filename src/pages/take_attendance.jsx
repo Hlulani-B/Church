@@ -27,22 +27,22 @@ function localInput(date) {
 const css = `
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;1,500&display=swap");
 
-html,body{margin:0;padding:0;background:#000;display:block;min-width:0}
+html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 #root{max-width:none;margin:0;padding:0;text-align:left;width:100%}
 
-.ta{--line:rgba(255,255,255,.24);--muted:#a8a8a8;min-height:100vh;background:#000;color:#fff;color-scheme:dark;font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;line-height:1.6}
+.ta{--line:#d4d4d4;--ink:#111;--muted:#666;--tint:#fafafa;min-height:100vh;background:#fff;color:var(--ink);color-scheme:light;font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;line-height:1.6}
 .ta.loading{display:block}
 .ta *{box-sizing:border-box}
 .ta a{color:inherit}
 .ta .serif{font-family:"Playfair Display",Georgia,"Times New Roman",serif;font-weight:500}
 
 .ta .bar{display:flex;align-items:center;justify-content:flex-start;gap:14px;padding:18px 24px;border-bottom:1px solid var(--line)}
-.ta .bar .logo{font-size:24px;text-decoration:none}
+.ta .bar .logo{font-size:24px;text-decoration:none;color:var(--ink)}
 .ta .menuwrap{display:flex;align-items:center;position:relative}
 
 .ta .main{padding:64px 56px 96px;max-width:760px;width:100%;margin:0 auto}
 .ta .eyebrow{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 10px}
-.ta h1{font-size:40px;line-height:1.15;margin:0 0 12px}
+.ta h1{font-size:40px;line-height:1.15;margin:0 0 12px;color:var(--ink)}
 .ta h1 em{text-transform:none;font-style:italic}
 .ta .sub{color:var(--muted);margin:0;font-size:17px;max-width:560px}
 
@@ -50,28 +50,29 @@ html,body{margin:0;padding:0;background:#000;display:block;min-width:0}
 
 /* The PIN is the one thing in the room everybody has to hear, so it is the biggest thing here. */
 .ta .pin{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
-.ta .pin .digits{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:48px;letter-spacing:.22em;min-width:5ch;text-align:center;border:1px solid var(--line);border-radius:2px;padding:10px 18px;background:#0d0d0d}
-.ta .pin .digits.empty{color:#4a4a4a}
+.ta .pin .digits{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:48px;letter-spacing:.22em;min-width:5ch;text-align:center;border:1px solid var(--ink);border-radius:2px;padding:10px 18px;background:#fff;color:var(--ink)}
+.ta .pin .digits.empty{color:#bdbdbd;border-color:var(--line)}
 
 .ta label{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 6px}
 .ta .times{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
-.ta input{width:100%;background:#0d0d0d;color:#fff;border:1px solid var(--line);border-radius:2px;padding:12px 14px;font-size:16px;font-family:inherit}
-.ta input:focus{outline:2px solid #fff;outline-offset:1px}
+.ta input{width:100%;background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:2px;padding:12px 14px;font-size:16px;font-family:inherit}
+.ta input:focus{outline:2px solid var(--ink);outline-offset:1px;border-color:var(--ink)}
 .ta .field{max-width:420px}
 
-.ta .btn{background:#fff;color:#111;border:0;border-radius:2px;padding:12px 24px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
-.ta .btn.ghostly{background:transparent;color:#fff;border:1px solid var(--line)}
-.ta .btn.ghostly:hover{border-color:#fff}
+.ta .btn{background:var(--ink);color:#fff;border:1px solid var(--ink);border-radius:2px;padding:12px 24px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
+.ta .btn:hover{background:#000;border-color:#000}
+.ta .btn.ghostly{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.ta .btn.ghostly:hover{border-color:var(--ink);background:#f5f5f5}
 .ta .btn:disabled{opacity:.45;cursor:default}
 .ta .row{display:flex;gap:12px;flex-wrap:wrap;margin-top:32px}
 
-.ta .note{background:#141414;border-left:3px solid #fff;padding:12px 16px;font-size:14px;margin:26px 0 0}
-.ta .note.bad{border-left-color:#ff6b6b}
+.ta .note{background:var(--tint);border:1px solid var(--line);border-left:3px solid var(--ink);padding:12px 16px;font-size:14px;margin:26px 0 0;color:var(--ink)}
+.ta .note.bad{border-left-color:#a11111;background:#fbeaea;color:#7a1010}
 
 /* The reading is shown as the numbers themselves, so a leader can see what the room will be
    measured against rather than being told that somewhere was found. */
 .ta .place{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.ta .place .read{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:15px;border:1px solid var(--line);border-radius:2px;padding:11px 14px;background:#0d0d0d;min-width:280px}
+.ta .place .read{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:15px;border:1px solid var(--line);border-radius:2px;padding:11px 14px;background:#fff;color:var(--ink);min-width:280px}
 .ta .place .read.waiting{color:var(--muted)}
 .ta .fine{font-size:13px;color:var(--muted);margin:14px 0 0;max-width:560px}
 
@@ -80,8 +81,8 @@ html,body{margin:0;padding:0;background:#000;display:block;min-width:0}
 .ta .field.dim{opacity:.45}
 /* The checkbox is a sentence, not a column heading, so it opts out of the labels above it and
    of the full-width box every other input on this page is given. */
-.ta .check{display:flex;align-items:center;gap:9px;margin:0 0 12px;font-size:14px;font-weight:400;letter-spacing:normal;text-transform:none;color:#fff;cursor:pointer}
-.ta .check input{width:auto;margin:0;accent-color:#fff}
+.ta .check{display:flex;align-items:center;gap:9px;margin:0 0 12px;font-size:14px;font-weight:400;letter-spacing:normal;text-transform:none;color:var(--ink);cursor:pointer}
+.ta .check input{width:auto;margin:0;accent-color:var(--ink)}
 
 
 @media (max-width:860px){

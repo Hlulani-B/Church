@@ -13,7 +13,7 @@ const css = `
 /*
   The way out of any screen that is about one community, kept where it is seen: the right
   end of the header, on the same line as the menu and the name. It inherits the header's own
-  colour, so it reads on the white pages and on the black take-attendance page alike, and it
+  colour, so it reads on every page it is placed on without needing its own palette, and it
   is a plain link rather than a router navigation because /community is not about the
   community this page was opened for — it is the list all of them come from.
 */

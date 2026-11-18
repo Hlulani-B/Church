@@ -206,14 +206,9 @@ export default function LeaderDashboard() {
         <h1 className="serif">{heading.name || "This community"}</h1>
         <p className="sub">{admin.email}</p>
 
-        {/* Attendance comes first: the notice (which carries its own PIN box) and the leader's own
-            control sit above everything else, so a leader sees a gathering being counted the moment
-            the page opens rather than after the roster. */}
-        {communityId && <SessionLive community_id={communityId} />}
-        {communityId && <AttendanceControl community_id={communityId} admin={false} />}
-
-        {error && <div className="note bad">{error}</div>}
-
+        {/* The page-to-page buttons come first. Attendance and the roster below get long, and
+            a leader who wants to leave this screen should not have to scroll past either to
+            find the way out. */}
         {communityId && (
           <div className="links">
             <button
@@ -237,6 +232,14 @@ export default function LeaderDashboard() {
             </button>
           </div>
         )}
+
+        {/* Attendance comes next: the notice (which carries its own PIN box) and the leader's own
+            control sit above the roster, so a leader sees a gathering being counted the moment
+            the page opens rather than after the people list. */}
+        {communityId && <SessionLive community_id={communityId} />}
+        {communityId && <AttendanceControl community_id={communityId} admin={false} />}
+
+        {error && <div className="note bad">{error}</div>}
 
         {!communityId ? (
           <div className="note">

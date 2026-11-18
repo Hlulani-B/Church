@@ -51,13 +51,15 @@ export class Community {
     return data
   }
 
-  // Every community a person belongs to: their ids out of community_members,
-  // then the names from this table. Returns [{ community_id, name }].
+  // Every community a person belongs to: their ids and roles out of community_members,
+  // then the names from this table. Returns [{ community_id, name, role }]. The role is
+  // the caller's own — a page that already knows which community it is about has no use
+  // for anybody else's, and picking the link up here saves a second read further down.
   async memberOf(email) {
     if (!email) throw new Error('email is required')
     const { data: links, error: linksError } = await this.client
       .from('community_members')
-      .select('community_id')
+      .select('community_id, role')
       .eq('email', email)
     if (linksError) throw linksError
 
@@ -69,7 +71,8 @@ export class Community {
       .select('community_id, name')
       .in('community_id', ids)
     if (error) throw error
-    return data
+    const role_of = Object.fromEntries(links.map((one) => [one.community_id, one.role]))
+    return data.map((one) => ({ ...one, role: role_of[one.community_id] }))
   }
 
   // The community a typed join code names: id and name only, because the code itself is an

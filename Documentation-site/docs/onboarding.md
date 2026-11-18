@@ -12,11 +12,11 @@ and an `open` flag; the content is a plain object keyed by role:
 
 | Role key | Shown on | Heading |
 | --- | --- | --- |
-| `admin` | `/admin-dashboard`, `/admin-attendance`, `/admin-testimonies`, `/admin-feedback` | Running a fellowship |
+| `admin` | `/admin-dashboard`, `/admin-attendance`, `/admin-testimonies` | Running a fellowship |
 | `leader` | `/leader-*`, `/take-attendance` | Taking attendance |
 | `member` | `/member-dashboard` | Being in the room |
 | `communities` | `/community` | Communities |
-| `feedback` | `/feedback` | Feedback |
+| `feedback` | `/feedback`, `/feedback/all` | Feedback |
 
 Content lives in one file, keyed by role rather than by page. An admin who opens the Guide from
 their dashboard and one who opens it from `/admin-attendance` see the same five steps, which is
@@ -61,7 +61,7 @@ if (path.startsWith('/admin-'))   return 'admin';
 if (path.startsWith('/leader-'))  return 'leader';
 if (path.startsWith('/member-'))  return 'member';
 if (path === '/community')        return 'communities';
-if (path === '/feedback')         return 'feedback';
+if (path === '/feedback' || path.startsWith('/feedback/')) return 'feedback';
 if (path === '/take-attendance')  return 'leader';
 ```
 
@@ -121,6 +121,28 @@ life is long enough to read twice and short enough not to hide anything undernea
    being obvious.
 3. Nothing else. The menu will pick up the auto-open, the Guide link and the modal without being
    told.
+
+## The profile page
+
+The menu's **Profile** link — present on every signed-in page — opens `/profile`, which is
+deliberately not just a name-edit form. Three things live there:
+
+- **Name and surname.** The only columns the browser may write on the `users` row; the
+  address is shown read-only, with a note about who to ask if it is wrong.
+- **Send me a reset link.** Calls `Auth.resetPassword()`, which hands
+  `sendPasswordResetEmail` the currently signed-in Firebase user rather than any address
+  typed into a form. This is different from `/forgot-password`, which is for somebody who
+  cannot sign in at all and has to enter their email by hand — the only two paths to the
+  same Firebase call, each appropriate to the state the person is actually in.
+- **Your communities.** Every fellowship this address belongs to, listed with the caller's
+  own role beside each, straight off `Community.memberOf`. Clicking one navigates to the
+  dashboard its role maps to without the round trip `/community` has to make (that page's
+  cards do not carry the role, so it asks `member` `find` on click). Anyone with more than
+  one community used to have to go back through `/community` to move between them.
+
+The last block on the page is the one link to `/feedback` that does not live in the menu —
+a signed-in person looking for it is usually already halfway through a task, and Profile is
+the page they open when the task has gone badly.
 
 ## What a guide is not
 

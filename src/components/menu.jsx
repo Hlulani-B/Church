@@ -33,7 +33,7 @@ function inferRole() {
   if (path.startsWith("/leader-")) return "leader";
   if (path.startsWith("/member-")) return "member";
   if (path === "/community") return "communities";
-  if (path === "/feedback") return "feedback";
+  if (path === "/feedback" || path.startsWith("/feedback/")) return "feedback";
   if (path === "/take-attendance") return "leader";
   return null;
 }

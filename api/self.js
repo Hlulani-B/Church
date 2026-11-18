@@ -2,7 +2,7 @@ import { Community } from '../src/functions/community.js'
 import { CommunityMember } from '../src/functions/community_members.js'
 import { AdminDashboard } from '../src/functions/admin_dashboard.js'
 import { Event } from '../src/functions/event.js'
-import { Session, distanceInMetres } from '../src/functions/session.js'
+import { Session, distanceInMetres, pickOpenSession } from '../src/functions/session.js'
 import { cors } from '../lib/cors.js'
 import {
   God,
@@ -32,16 +32,19 @@ import {
 // What a signed-in browser may do at this tier, and nothing else.
 const SELF_ACTIONS = {
   user: ['find', 'create', 'update'],
-  community: ['memberOf', 'create', 'join'],
+  // 'join' is the typed code; 'join_at_session' is the QR scan, which proves its way in with the
+  // PIN of a check-in that is open right now rather than with a code the person was handed.
+  community: ['memberOf', 'create', 'join', 'join_at_session'],
   member: ['create', 'find'],
   // Only the names of the people who lead, never the whole roster — that stays a leader's read.
   admin: ['hosts'],
   event: ['record', 'checkin'],
   session: ['open', 'live'],
-  // Any signed-in person may leave product feedback about the app itself. The table is not
-  // community-scoped, so no membership check applies; the address on the row comes from the
-  // token, and only if the caller opted in.
-  feedback: ['create'],
+  // Any signed-in person may leave product feedback about the app itself, and any signed-in
+  // person may read what everybody else has said. The table is not community-scoped, so no
+  // membership check applies; the address on the row is the token's, which is what makes the
+  // pile attributable rather than anonymous.
+  feedback: ['create', 'all'],
 }
 
 export default async function handler(req, res) {
@@ -212,14 +215,12 @@ export default async function handler(req, res) {
       const named = requested
         ? openings.filter((one) => one.session_id === requested)
         : openings
-      const open = named
-        .filter(
-          (one) =>
-            one.cancel !== true &&
-            new Date(one.started_at) <= now &&
-            new Date(one.ended_at) >= now,
-        )
-        .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))[0]
+      /*
+        The same window rule that the join-by-scan below applies, reached through the same helper:
+        if it ever moves, it has to move for both at once, or a room full of phones ends up
+        disagreeing with the register about who was standing where.
+      */
+      const open = pickOpenSession(named, { now })
       if (!open) {
         if (requested && !named.length) {
           return res
@@ -455,16 +456,12 @@ export default async function handler(req, res) {
       return res.status(200).json({ data: openings })
     }
     /*
-      Product feedback travels under the caller's own hand, or under nobody's. `include_email`
-      is the tickbox on the form; if it is on, the address written into the row is the token's,
-      never anything the body said. If it is off, the column is null and the row is anonymous.
-      There is no community_id on this table — one admin's list is every fellowship's list —
-      so the only thing the caller can pick here is whether their name is on it.
+      Product feedback always travels under the caller's own hand. The address that lands on the
+      row is the one this handler already put into `params.email` — read off the verified ID token,
+      never out of the body — so a signed-in person cannot post into the pile unsigned and cannot
+      post as anybody else. There is no community_id on this table, and the pile is read by every
+      signed-in person, so the row's only owner is the address on it.
     */
-    if (action === 'feedback' && params.function === 'create') {
-      params = { ...params, email: params.include_email ? email : null }
-      delete params.include_email
-    }
 
     /*
       Who runs this community, for the member's dashboard: its admin(s) and its leaders, by name.
@@ -487,6 +484,66 @@ export default async function handler(req, res) {
       }
       const people = await new AdminDashboard(god.url, god.key).hosts(params.community_id)
       return res.status(200).json({ data: people })
+    }
+
+    /*
+      Joining from a QR scan, which is how a first-timer at the door gets in without anybody
+      stopping to find a code. It is deliberately not the code branch above wearing different
+      clothes: here the credential is the PIN, and it is only worth anything because the session
+      it belongs to is open at this exact second. A photograph of a screen carries four digits no
+      better than a whisper does, so the window is what makes this "somebody standing in this room
+      during this gathering" rather than "anybody who once saw a projector" — which is the same
+      proof the check-in two branches up already accepts before it writes an arrival.
+
+      Everything that decides the yes is read by the server: the community comes from the session
+      row those digits opened, the address comes from the token, and the role is 'member', which
+      Community.join sets and takes from nobody. A caller cannot name a community here and get
+      added to it, because the id in the body only ever selects which session is being asked
+      about, and a session in another fellowship answers for nobody.
+    */
+    if (action === 'community' && params.function === 'join_at_session') {
+      const pin = String(params.pin || '').trim()
+      if (!params.community_id) {
+        return res.status(400).json({ error: 'params.community_id is required to join at a gathering' })
+      }
+      if (!/^\d{4}$/.test(pin)) {
+        return res
+          .status(400)
+          .json({ error: 'params.pin must be the four digits the leader read out' })
+      }
+      const openings = await new Session(god.url, god.key).all({
+        community_id: params.community_id,
+        pin,
+      })
+      const open = pickOpenSession(openings, {
+        session_id: params.session_id ? String(params.session_id).trim() : '',
+        now: new Date(),
+      })
+      if (!open) {
+        return res.status(400).json({
+          error:
+            'that PIN does not open a check-in right now, so nobody can be added from this scan — ask the leader to open one',
+        })
+      }
+      const one = await new Community(god.url, god.key).find(open.community_id)
+      if (!one) {
+        return res.status(400).json({ error: 'that session belongs to no community' })
+      }
+      /*
+        Already being a member is a yes, not an error — the join-code branch above can afford to
+        shout, because a person typing a code knows what they asked for. This one runs on the way
+        to a check-in, for the member who scanned the same QR as the stranger did, and making them
+        watch a failure they did not cause would be the first thing the new flow got wrong.
+      */
+      const link = await links.find(email, open.community_id)
+      if (link) {
+        return res.status(200).json({ data: { ...link, name: one.name, already: true } })
+      }
+      const added = await new Community(god.url, god.key).join({
+        community_id: open.community_id,
+        email,
+      })
+      return res.status(200).json({ data: { ...added, name: one.name } })
     }
   }
 

@@ -30,9 +30,6 @@ const ADMIN_ACTIONS = {
   admin: ['changeCode', 'assign'],
   member: ['remove'],
   community: ['find'],
-  // Reading the whole pile of product feedback: the table is not community-scoped, so the
-  // gate is that the caller administers at least one community somewhere.
-  feedback: ['all'],
 }
 
 export default async function handler(req, res) {
@@ -60,23 +57,6 @@ export default async function handler(req, res) {
         .json({ error: 'a signed-in browser may only touch its own user row and communities' })
     }
     params = { ...params, email }
-    /*
-      Product feedback lives above every community — the table has no community_id — so the
-      per-community roleGate below does not apply to it. What it needs instead is a caller who
-      administers at least one fellowship, which is checked here against the caller's own
-      membership rows and nothing else. Every other action on this endpoint keeps its existing
-      per-community gate.
-    */
-    if (action === 'feedback' && params.function === 'all') {
-      const links = new CommunityMember(god.url, god.key)
-      const everywhere = await links.all({ email })
-      if (!everywhere.some((one) => one.role === 'admin')) {
-        return res
-          .status(403)
-          .json({ error: 'only an admin of at least one community can read the feedback pile' })
-      }
-      return finish(god, action, params, null, res)
-    }
     /*
       These change what a community looks like to everybody in it: who belongs, who manages it,
       the code that lets a stranger walk in. An admin of this community settles it, taken from the

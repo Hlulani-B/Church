@@ -265,6 +265,13 @@ export default function LeaderAttendance() {
         <h1 className="serif">{admin.name || "This community"}</h1>
         <p className="sub">{admin.email}</p>
 
+        {/* A way out at the top as well as the bottom. Once a gathering is picked, the list
+            above the fold is dozens of rows tall, and scrolling to the footer to leave feels
+            like the page owns you. */}
+        <button className="back" type="button" onClick={() => open("/leader-dashboard")}>
+          Back to the dashboard
+        </button>
+
         {!communityId && !error && (
           <div className="note">
             No community was chosen, so there is nothing to read here. Go back, click a

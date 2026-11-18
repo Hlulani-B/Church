@@ -367,6 +367,12 @@ export default function AdminTestimonies() {
         <h1 className="serif">{admin.name || "This community"}</h1>
         <p className="sub">{admin.email}</p>
 
+        {/* The way out comes before the list. Testimonies pages are long — the bottom of one
+            is a real scroll, and the menu at the top is the only other thing on hand. */}
+        <button className="back" type="button" onClick={() => open("/admin-dashboard")}>
+          Back to the dashboard
+        </button>
+
         {!communityId && !error && (
           <div className="note">
             No community was chosen, so there is nothing to read here. Go back, click a

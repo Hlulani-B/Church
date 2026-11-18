@@ -7,11 +7,12 @@ const feedback = new FeedbackFetch();
 
 /*
   The one place in the app that talks about the product rather than about a fellowship. There
-  is no community_id on the row and there is no per-community gate: any signed-in person can
-  say what they think, and the address on the row is either the token's (if they ticked the
-  box) or nobody's. Keeping it anonymous-by-default is on purpose — the person with the sharpest
-  criticism is often the one least willing to attach their name to it, and the pile is not
-  interesting without them.
+  is no community_id on the row and there is no per-community gate: any signed-in person can say
+  what they think, and the row they leave carries the address on their own ID token.
+
+  That is not a choice the form offers any more, so the page says it out loud above the boxes.
+  What a person can still control is how much of themselves goes in the text — and what nobody
+  sees on this page is the address itself, which is stored and exported but never printed.
 */
 const css = `
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;1,500&display=swap");
@@ -34,8 +35,7 @@ const css = `
 .fb .radio input{position:absolute;opacity:0;pointer-events:none}
 .fb textarea{width:100%;min-height:96px;font:inherit;font-size:15px;padding:12px 14px;border:1px solid var(--line);border-radius:2px;background:#fff;color:var(--ink);resize:vertical}
 .fb textarea:focus{outline:none;border-color:#111}
-.fb .check{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--muted);margin:20px 0 0}
-.fb .check input{margin-top:4px;accent-color:#111}
+.fb .sign{font-size:14px;color:var(--muted);margin:24px 0 0;padding:12px 14px;border-left:3px solid var(--ink);background:#fafafa}
 .fb .row{display:flex;gap:12px;margin-top:28px;flex-wrap:wrap}
 .fb .btn{background:#111;color:#fff;border:1px solid #111;border-radius:2px;padding:12px 22px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}
 .fb .btn.ghost{background:#fff;color:#111}
@@ -87,7 +87,6 @@ export default function FeedbackPage() {
   const [improvements, setImprovements] = useState("");
   const [additions, setAdditions] = useState("");
   const [challenging, setChallenging] = useState("");
-  const [includeEmail, setIncludeEmail] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
@@ -105,7 +104,6 @@ export default function FeedbackPage() {
         improvements,
         additions,
         most_challenging: challenging,
-        include_email: includeEmail,
       });
       setDone(true);
     } catch (cause) {
@@ -121,15 +119,16 @@ export default function FeedbackPage() {
         <style>{css}</style>
         <header className="bar">
           <Link to="/community" className="logo serif">Kopano</Link>
-          <Menu guideRole="feedback" />
+          <Menu guideRole="feedback" items={[{ label: "See everyone's notes", to: "/feedback/all" }]} />
         </header>
         <main className="main">
           <div className="thanks">
             <p className="big serif">✦</p>
             <h1 className="serif">Thank <em>you.</em></h1>
-            <p className="lede">Your notes go straight to whoever runs this app. Nothing else happens automatically — no reply will follow unless you put your email on it.</p>
+            <p className="lede">Your notes go straight to whoever runs this app, and into the pile everybody here can read. Nothing else happens automatically — your address is stored with the note but never shown beside it.</p>
             <div className="row" style={{ justifyContent: "center" }}>
               <button className="btn" type="button" onClick={() => navigate(-1)}>Back</button>
+              <Link to="/feedback/all" className="btn ghost">See what others have said</Link>
               <Link to="/community" className="btn ghost">My communities</Link>
             </div>
           </div>
@@ -143,13 +142,14 @@ export default function FeedbackPage() {
       <style>{css}</style>
       <header className="bar">
         <Link to="/community" className="logo serif">Kopano</Link>
-        <Menu guideRole="feedback" />
+        <Menu guideRole="feedback" items={[{ label: "See everyone's notes", to: "/feedback/all" }]} />
       </header>
       <main className="main">
         <h1 className="serif">How is <em>Kopano</em> going?</h1>
         <p className="lede">
-          Five short questions. Nothing you write here shows up on a dashboard, and the row is
-          anonymous unless you tick the box at the bottom.
+          Five short questions. Nothing here appears on a community's dashboard. Everybody who uses
+          the app can read the pile — <Link to="/feedback/all">see what has been said</Link> — and
+          what they see is your words, never your address.
         </p>
 
         <form onSubmit={submit}>
@@ -186,18 +186,12 @@ export default function FeedbackPage() {
             disabled={busy}
           />
 
-          <div className="check">
-            <input
-              id="fb-include-email"
-              type="checkbox"
-              checked={includeEmail}
-              onChange={(e) => setIncludeEmail(e.target.checked)}
-              disabled={busy}
-            />
-            <label htmlFor="fb-include-email">
-              Include my email so a reply is possible. Left off, the row is anonymous.
-            </label>
-          </div>
+          {/* Not a choice, so not a checkbox: the row is signed, and the page says so rather
+              than letting somebody discover it afterwards. */}
+          <p className="sign">
+            This is signed with the address you are signed in with. It is stored with the note and
+            travels into an export, and it is never printed next to your words on the pile page.
+          </p>
 
           {error && <div className="err">{error}</div>}
 

@@ -7,10 +7,11 @@ import { createClient } from '@supabase/supabase-js'
   the row has none, and inventing one at the class boundary would only lie about what the
   table actually stores.
 
-  `email` is nullable on the schema because a walk-up should be able to say something without
-  committing to being identified. The caller's own address comes from the Firebase token in
-  /api/self — never from the body — and only lands on the row when the person ticked the box
-  that says they are happy for it to.
+  Every row carries the address of whoever wrote it. The column is nullable on the schema — a
+  row can be unsigned — but nothing on this path writes an empty one: /api/self fills `email`
+  from the verified ID token and a submission without it is refused here rather than filed
+  anonymously. The point of the pile is that it is a record of what real people said, so the
+  address is not an optional extra that a caller can be talked out of.
 */
 const TABLE = 'feedback'
 const MAX_FIELD = 4000
@@ -36,12 +37,15 @@ export class Feedback {
     if (typeof solves_problem !== 'boolean') {
       throw Object.assign(new Error('solves_problem must be true or false'), { status: 400 })
     }
+    // The address is not a caller's choice: it is the one the endpoint read off the ID token, and
+    // a request that arrives without it did not come from a signed-in browser. Refusing beats
+    // filing an anonymous row, because an anonymous row is exactly what this table no longer has.
+    if (!email) {
+      throw Object.assign(new Error('feedback is signed with your address; this request had none'), { status: 400 })
+    }
     const row = {
       stars: s,
-      // The caller's address, filtered upstream: /api/self passes the token email when the
-      // person ticked "include my email", and null otherwise. Nothing typed into the body
-      // ever reaches here.
-      email: email ? String(email).trim().toLowerCase() : null,
+      email: String(email).trim().toLowerCase(),
       solves_problem,
       improvements: clean(improvements),
       additions: clean(additions),
@@ -54,8 +58,9 @@ export class Feedback {
 
   /*
     Every row, newest first, capped at a page. There is no server-side paging on purpose: this
-    is one admin's read of a table they will scan visually rather than a report. If the pile
-    ever outgrows 500, an "older" button becomes a real need — before that it is decoration.
+    is a pile somebody scrolls to see whether the same complaint keeps showing up rather than a
+    report. If it ever outgrows 500, an "older" button becomes a real need — before that it is
+    decoration.
   */
   async all({ limit = 500 } = {}) {
     const capped = Math.max(1, Math.min(Number(limit) || 500, 500))

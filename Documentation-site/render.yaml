@@ -1,0 +1,30 @@
+# Render blueprint for the documentation site.
+#
+# One static service, nothing else: this site is built to plain HTML by MkDocs and has no API of
+# its own, so there are no secrets to supply and no database to provision. The app itself still
+# lives on Vercel (see vercel.json at the repository root) — this file deliberately does not touch
+# it, so creating the Render service cannot affect a running deploy.
+#
+# To use it: New + → Blueprint in the Render dashboard and point it at this repository, then set
+# the Repository Root to Documentation-site. Render reads this file from there, which keeps the
+# build and publish paths below relative to the folder they actually belong in.
+
+spec: "2021-08-15"
+
+apps:
+  - name: kopano-docs
+    type: static
+    plan: free
+    runtime: python
+
+    # requirements.txt names mkdocs-material, which pulls MkDocs itself in with it. The version
+    # is pinned there rather than here so the theme and its generator cannot drift apart between
+    # a local `mkdocs serve` and a production build.
+    buildCommand: pip install -r requirements.txt && mkdocs build --strict
+
+    # mkdocs.yml sets use_directory_urls: false, so site/ is a flat folder of .html files that a
+    # static host can serve without any rewrite rule to invent an index.html. --strict above is
+    # what stops a broken internal link from shipping: it turns a warning into a failed build.
+    publishPath: site
+
+    healthCheckPath: /index.html

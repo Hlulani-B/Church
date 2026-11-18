@@ -42,6 +42,30 @@ export function generatePin(length = 4) {
   return pin
 }
 
+/*
+  Out of sessions already read for one community — by PIN, by day, whatever the caller needed —
+  the one that is being stood inside right now, or null.
+
+  Three rules, all of them the check-in's, and they live here so a second caller cannot drift
+  away from the first. A session scanned is held to the id the scan named, not merely to digits
+  that happen to repeat. A cancelled session records nobody: whoever opened it called it off. And
+  now has to sit between the two hours, which is what stops last Sunday's PIN from answering
+  today. A row whose window is missing or unparseable fails both comparisons and drops out — a
+  session with no times is not an open one. If two somehow overlap, the newest start wins.
+*/
+export function pickOpenSession(rows, { session_id, now = new Date() } = {}) {
+  const wanted = String(session_id || '').trim()
+  return (rows || [])
+    .filter((one) => !wanted || one.session_id === wanted)
+    .filter(
+      (one) =>
+        one.cancel !== true &&
+        new Date(one.started_at) <= now &&
+        new Date(one.ended_at) >= now,
+    )
+    .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))[0] || null
+}
+
 export class Session {
   constructor(url = process.env.SUPABASE_URL, key = process.env.SUPABASE_ANON_KEY) {
     if (!url || !key) throw new Error('Supabase url and key are required')
@@ -178,9 +202,16 @@ export class Session {
   }
 
   /*
-    What the leader and admin dashboards listen to: every session in this community that has not
-    yet ended, with the fields a person needs to manage one they opened — the two times, the radius,
-    whether it was cancelled and who created it — and, unlike 'open', the PIN as well.
+    What the leader and admin dashboards listen to: every session in this community that has been
+    neither called off nor yet ended, with the fields a person needs to manage one they opened —
+    the two times, the radius and who created it — and, unlike 'open', the PIN as well.
+
+    A called-off session is dropped here rather than sent down for the page to hide. Cancelling is
+    one-way, so such a row has nothing left to manage, yet it still carries its four digits — and
+    the dashboard builds a scannable QR from them. Handing a dead check-in's PIN to a screen that
+    can no longer do anything with it is a leak with no upside, and dropping it here is also what
+    makes the card vanish the moment somebody presses Cancel instead of hanging around tagged
+    'Cancelled' until its window runs out.
 
     The PIN is the reason this read answers to the leader tier rather than to any member: it is the
     one secret 'open' deliberately keeps back so a poll cannot tell the room the digits before the

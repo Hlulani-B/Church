@@ -4,6 +4,12 @@ site_author: Hlulani Baloyi
 repo_url: https://github.com/Hlulani-B/Church
 edit_uri: edit/main/Documentation-site/docs/
 
+# Flat output: docs/architecture.md becomes architecture.html rather than architecture/index.html.
+# A static host with no rewrite rule (Render's static sites among them) can then serve a deep link
+# straight from disk; with directory URLs on, every page but the home page depends on the host
+# inventing an index.html that is not in the request.
+use_directory_urls: false
+
 theme:
   name: material
   palette:
@@ -37,6 +43,9 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/Hlulani-B/Church
 
+extra_javascript:
+  - https://unpkg.com/mermaid@11/dist/mermaid.esm.min.mjs
+
 markdown_extensions:
   - admonition
   - attr_list
@@ -46,7 +55,11 @@ markdown_extensions:
   - toc:
       permalink: true
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.emoji:
@@ -63,6 +76,7 @@ nav:
       - Check-in and QR flow: check-in.md
       - Feedback: feedback.md
       - Testing: testing.md
+      - Third-party dependencies: dependencies.md
   - Data:
       - Database: database.md
       - Authentication: authentication.md

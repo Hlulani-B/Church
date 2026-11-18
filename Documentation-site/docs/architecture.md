@@ -74,8 +74,10 @@ testimonies at a time, then another hundred as you scroll, and searches by date 
 — a page load that has to wait for a cold function start before the first row appears feels
 broken, and each round trip also spends against the plan's request quota. The exports
 need every matching row in the browser anyway, because the `.xlsx` and `.pdf` writers
-in `src/page_functions/testimony_files.js` assemble the file there, from bytes, with no
-library and no server step. One page, one connection — the cost is that its guards are
+in `src/page_functions/table_files.js` assemble the file there, from bytes, with no
+library and no server step. They are given a column list rather than knowing a table's
+shape, which is how testimony (four columns) and feedback (seven) share one pair of
+writers. One page, one connection — the cost is that its guards are
 in two different places.
 
 So the split today is:
@@ -93,9 +95,8 @@ So the split today is:
 | Member dashboard — the live/scheduled check-in notice | `/api/self` `session` `live` |
 | Leader/admin dashboards — watching and managing open check-ins | `/api/leader` `session` `manage` |
 | Take attendance — leader opens a session, sees its PIN and QR | `/api/leader` `session` `create` |
-| `/qr` landing — phone that scanned the QR; also signs a first-timer up inline | Firebase auth + `/api/self` `session` `checkin`, `community` `join` |
-| Feedback — the form every member can reach from the menu | `/api/self` `feedback` `create` |
-| Admin feedback — the whole pile, app-wide | `/api/admin` `feedback` `all` |
+| `/qr` landing — phone that scanned the QR; also signs a first-timer up inline and adds them to the fellowship | Firebase auth + `/api/self` `event` `checkin`, `community` `join_at_session` |
+| Feedback — the form every member can reach from the menu, and the pile everyone can read | `/api/self` `feedback` `create` / `all` |
 
 The leader pages are the admin ones with nothing to click: the roster arrives without the
 ⋮ menu that changes a role or takes somebody out, and no leader page asks the function for
@@ -104,6 +105,25 @@ cannot do is not hidden on the page — it is refused by the function, and the t
 the list of which tier answers what. The admin dashboard does hide one thing: the row that
 holds the signed-in address carries no menu, because that page is not how an admin hands
 their own role on or leaves.
+
+## Where a way out lives
+
+Every page that is about one community carries three things in the same order at the top:
+the header bar with the menu, the back link and the logo; then the eyebrow, the community's
+name and the caller's address; then, immediately, the buttons that leave this page for
+another. Attendance cards, the roster and the join code come after.
+
+That ordering was reversed until recently. The `.links` block on the three dashboards used
+to sit under everything — below the live-check-in card, the leader's own attendance control
+and (on admin) the whole roster — which meant scrolling two or three screens on a phone to
+reach "View testimonies". The `Back to the dashboard` anchor at the bottom of the long
+attendance and testimonies pages had the same problem: a page whose whole purpose is a
+hundred-row list is not the place to put the exit at the end.
+
+The rule now: on any screen that can grow, the navigation is above the content, not below
+it. Duplicating it at the bottom is fine and is what the testimonies pages do, but only
+after a version at the top. A one-line comment above each block says why the placement is
+deliberate, so it does not get "tidied" back into reading order later.
 
 ## The one place the read disagrees with the table
 
@@ -193,7 +213,7 @@ instead.
   ever read from the verified sign-in.
 - **A member marking themselves present goes through the server, and cannot lie about it.**
   Two doors — the card on `session_live.jsx` and the `/qr` landing — both POST the same
-  `session` `checkin` call to `/api/self`, which matches `(community_id, pin)` with the
+  `event` `checkin` call to `/api/self`, which matches `(community_id, pin)` with the
   `cancel` filter, checks the window against the server's clock, checks the haversine against
   the session's `radius`, and either writes the row or refuses. A body that names
   `user_email` is ignored: the address on the row is the one the ID token carried. A second
@@ -201,10 +221,22 @@ instead.
   rather than a duplicate row, backed by the `unique (community_id, event_date, event_name,
   user_email)` constraint on `event`. The full flow is written up in
   [Check-in and QR flow](check-in.md).
-- **`feedback` is app-wide and the write ignores what the body claims.** `feedback` `create`
-  sits on the self tier, `feedback` `all` on the admin tier — but the admin gate for it is
-  not `roleGate`, it is *"are you an admin of at least one community"*, because the table has
-  no `community_id` for a per-community question to ask. Details in [Feedback](feedback.md).
+- **Joining from a scan is worth only what the open check-in is worth.** The `/qr` landing posts
+  `community` `join_at_session` before the arrival, which is how a first-timer gets added without
+  anybody hunting for a code. It refuses unless those four digits name a session whose window holds
+  *now*, on the server's clock and through the same `pickOpenSession` the check-in uses — so the
+  community is read off that session's row and an id claimed in the body decides nothing, the role
+  is written as `member` by the function, and the address comes off the ID token, which is what
+  stops a scan from enrolling anybody who is not holding the phone. A photographed screen and a
+  whispered PIN are therefore worth exactly as much here as they already were at the register:
+  until that gathering ends.
+- **`feedback` is app-wide and the write ignores what the body claims.** Both its doors —
+  `create` and `all` — sit on the self tier. The pile is about the app rather than about a
+  community, and the table has no `community_id` for a per-community question to ask, so the
+  only gate on reading it is being signed in. The email that lands on a row is always the
+  token's and never the body's: every note is signed, which is what makes it count as evidence
+  rather than noise, and no screen in the app prints the address. Details in
+  [Feedback](feedback.md).
 
 ## What is not enforced yet
 
@@ -221,8 +253,8 @@ withheld. The first two are still ahead of us, not behind us:
   and the table checks either.
 - **The PIN, the time window and the distance are checked in the request handler, not by a
   Postgres function.** No `supabase.rpc(...)` call exists anywhere in `src/` or `api/` — the
-  rule lives in `src/functions/session.js` and is enforced every time a browser calls
-  `session` `checkin`. That is fine for every path the app itself takes, and it is not fine for
+  rule lives in `src/functions/session.js` and is enforced every time a browser asks for
+  `event` `checkin`, in `api/self.js`. That is fine for every path the app itself takes, and it is not fine for
   a caller with the anon key that talks to PostgREST directly, which is why `event` still has
   no RLS and this rule has no teeth in front of the table.
 - **Session creation is guarded in the function, not the database.** The take-attendance page

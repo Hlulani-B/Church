@@ -13,7 +13,7 @@ Run it once in the Supabase SQL Editor.
 | `session` | A check-in session opened by a leader: a `pin`, the gathering it was opened for, a date, a window and the place it was opened from. |
 | `event` | One row per member per event: whether they attended, the reason if they did not, and who recorded it. |
 | `testimony` | A testimony body written by a member for a given date. |
-| `feedback` | One row per submission about the app itself. App-wide, not per community — see [Feedback](feedback.md). |
+| `feedback` | One row per submission about the app itself. App-wide and open to every signed-in reader — see [Feedback](feedback.md). |
 
 ## Schema
 
@@ -193,10 +193,12 @@ alter table session enable row level security;
   flattens the nested `users` object into `{ email, name, surname, role }`, ordered by role
   then email, so an admin screen reads admins, then leaders, then members.
 - A person's communities take two reads, because `community_members` holds only the
-  ids: `Community.memberOf(email)` collects the `community_id`s for that address, then
-  selects `community_id, name` from `community` with `.in(...)`. It returns `[]` for
+  ids: `Community.memberOf(email)` collects the `community_id`s and the caller's own `role`
+  for each of them from `community_members`, then selects `community_id, name` from
+  `community` with `.in(...)`, and folds the role back onto each row. It returns `[]` for
   someone with no links, and is reached from the browser through
-  `CommunityFetch.getCommunities()` in `src/page_functions/community.js`.
+  `CommunityFetch.getCommunities()` in `src/page_functions/community.js`. Both `/community`
+  and the communities section of `/profile` read through this one call.
 - Reads of `users`, `community` and `community_members` only return rows when the query
   runs on the service-role key. `new User()` defaults to `SUPABASE_ANON_KEY` and gets
   zero rows back from these RLS-protected tables; `new God()` passes the service key to
@@ -216,10 +218,12 @@ alter table session enable row level security;
   ```
 
 - `feedback` is the only table in the schema that is **not** tied to a `community_id`. It
-  carries one row per submission about the app itself, and any signed-in member may write to
-  it; only an admin of at least one community may read the pile. `email` is nullable and the
+  carries one row per submission about the app itself. Any signed-in member may write to it and
+  any signed-in member may read the whole pile — the table is about Kopano rather than about a
+  fellowship, so the read is not role-gated. `email` is nullable in the schema but the
   write path never trusts what a browser claims for it — the value that lands in the row is
-  the one the Firebase ID token carried, or `null` if the submitter left the "include my
-  email" checkbox off. There is no foreign key on it and no cascade; the row is signal about
-  the product rather than a record about a person, so it survives the person. Full write-up:
+  the one the Firebase ID token carried, and `Feedback.create` refuses a submission that
+  arrives without one. No screen prints it; it is stored and exported only. There is no
+  foreign key on it and no cascade; the row is signal about the product rather than a record
+  about a person, so it survives the person. Full write-up:
   [Feedback](feedback.md).

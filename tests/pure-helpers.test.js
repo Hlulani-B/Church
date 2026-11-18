@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { distanceInMetres, generatePin } from '../src/functions/session.js'
+import { distanceInMetres, generatePin, pickOpenSession } from '../src/functions/session.js'
 import { reading } from '../lib/god.js'
 
 /*
@@ -109,5 +109,59 @@ describe('reading', () => {
   it('is NaN for a non-numeric string', () => {
     // Zero is a legitimate coordinate; a stray word is not.
     expect(Number.isNaN(reading('abc'))).toBe(true)
+  })
+})
+
+/*
+  The window rule, alone, decides two things that now rest on the same four digits: whether a PIN
+  writes an arrival, and whether a scan is allowed to enrol somebody as a member. A session that is
+  closed, cancelled or named differently must answer nothing to either — the first would let last
+  Sunday's PIN record today, and the second would turn a photograph of a projector into a way into
+  a fellowship. Every case below is one of those two failures in disguise.
+*/
+describe('pickOpenSession', () => {
+  const at = (offset) => new Date('2026-11-15T09:00:00Z').getTime() + offset
+  const iso = (offset) => new Date(at(offset)).toISOString()
+  const now = new Date('2026-11-15T09:30:00Z')
+  const open = { session_id: 'a', started_at: iso(-30 * 60e3), ended_at: iso(30 * 60e3) }
+
+  it('takes the session whose window holds now', () => {
+    expect(pickOpenSession([open], { now })).toBe(open)
+  })
+
+  it('refuses one that has closed, and one that has not started', () => {
+    const closed = { ...open, session_id: 'b', started_at: iso(-3 * 3600e3), ended_at: iso(-2 * 3600e3) }
+    const future = { ...open, session_id: 'c', started_at: iso(2 * 3600e3), ended_at: iso(3 * 3600e3) }
+    expect(pickOpenSession([closed, future], { now })).toBeNull()
+  })
+
+  it('refuses a cancelled session even inside its window', () => {
+    expect(pickOpenSession([{ ...open, cancel: true }], { now })).toBeNull()
+  })
+
+  it('holds a scanned session to the id the scan named', () => {
+    // Same digits, same window, different gathering: the QR points at one row, not at whichever
+    // row those digits happen to repeat against.
+    expect(pickOpenSession([open], { session_id: 'z', now })).toBeNull()
+    expect(pickOpenSession([open], { session_id: 'a', now })).toBe(open)
+  })
+
+  it('takes the newest start when two windows overlap', () => {
+    const later = { ...open, session_id: 'd', started_at: iso(10 * 60e3) }
+    expect(pickOpenSession([open, later], { now }).session_id).toBe('d')
+  })
+
+  it('treats a session with no usable window as closed', () => {
+    // Seeded rows and half-written ones must not become a way in. `new Date(undefined)` is an
+    // Invalid Date, and every comparison against it is false.
+    expect(pickOpenSession([{ session_id: 'e' }], { now })).toBeNull()
+    expect(pickOpenSession([{ ...open, ended_at: 'not a time' }], { now })).toBeNull()
+  })
+
+  it('answers null rather than undefined when there is nothing to pick', () => {
+    // The endpoints branch on the falsy value, but a caller that compares with `null` should not
+    // be the thing that quietly breaks when this helper is reused.
+    expect(pickOpenSession([], { now })).toBeNull()
+    expect(pickOpenSession(null, { now })).toBeNull()
   })
 })

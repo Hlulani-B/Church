@@ -31,22 +31,23 @@ export function markSeen(role) {
 const CONTENT = {
   admin: {
     heading: "Running a fellowship",
-    intro: "You own the community: its people, their roles, the join code at the door.",
+    intro: "You own the community: its people, their roles, the join code.",
     steps: [
       { t: "Open a check-in", d: "From the dashboard, press “Take attendance”. Four digits and a scannable QR appear; you are marked present the moment you save, so you never type your own PIN." },
-      { t: "Add or remove people", d: "The Roster card lists everybody. Give somebody the join code and they add themselves; use Remove to take them off. Change a role from the same row." },
-      { t: "Reset the join code", d: "Only if it has leaked. The old code stops working immediately, and the new one is what your members will need to give the next walk-up." },
-      { t: "Approve testimonies", d: "Whatever a member posts sits in a queue until you approve it. Hiding a testimony does not delete it — you can bring it back." },
-      { t: "Feedback lives above the community", d: "Admin feedback is app-wide, not per-fellowship. Everyone in the pile sees the same notes." },
+      { t: "Add or remove people", d: "The Roster card lists everybody. Someone who walks in during a service just scans the QR — the open check-in adds them as a member, so you never have to find a code. Anyone who did not attend still needs one: give them the join code and they add themselves. Use Remove to take somebody off, and change a role from the same row." },
+      { t: "Reset the join code", d: "Only if it has leaked. The old code stops working immediately, and the new one is what anybody who joins outside a service will need. A scan during an open check-in never uses the code, so resetting it does not lock the door behind a walk-up." },
+      { t: "Approve testimonies", d: "There is no approval queue yet — anything a member posts appears on the community's list straight away. What you can do today is export the pile to Excel or PDF, and search it by name and date." },
+      { t: "Feedback is above the community", d: "The pile is app-wide, not per-fellowship, and every signed-in person can read it — including you, from \"Read feedback\" on this page. Addresses are stored on the rows and printed in an export, never on the page. What you write there is signal for whoever runs Kopano, not for your members." },
     ],
   },
   leader: {
     heading: "Taking attendance",
-    intro: "You can open a check-in and read a community's roster, but you cannot change who belongs to it.",
+    intro: "You can open a check-in and read a community's roster, but you cannot change anybody's role — and you never have to hand out a code at the door.",
     steps: [
       { t: "Open a check-in", d: "Press “Take attendance”. Read the four digits out, or turn the screen around so the QR is visible. You are marked present automatically when you save." },
       { t: "Choose a distance", d: "By default a check-in only accepts arrivals near the leader. Widen the radius if the hall reads badly, or turn the rule off for a gathering that meets in three places at once." },
       { t: "Cancel early", d: "Cancel from the same card if the room emptied or the service ran long. Cancellation is one-way — a called-off session cannot be reopened." },
+      { t: "Nobody needs a code", d: "Someone who walks in cold scans the same QR as everybody else. They are given an account on that page, added to the community as a member, and marked present — no join code to hunt down, because the open check-in is what proves they are in the room." },
       { t: "Read the register", d: "Attendance shows everybody recorded for a gathering, present and absent together, and it names who opened each." },
     ],
   },
@@ -55,19 +56,19 @@ const CONTENT = {
     intro: "You came, you mark it, you get on with the service.",
     steps: [
       { t: "Check in with the PIN", d: "A card appears on your dashboard while a session is open. Type the four digits the leader just read out. That is the whole thing." },
-      { t: "Or scan the QR", d: "Same effect: hold your phone up to the leader's screen. It opens a small page that reads your location and marks you present — no typing." },
+      { t: "Or scan the QR", d: "Same effect: hold your phone up to the leader's screen. It opens a small page that reads your location and marks you present — no typing, and nothing to ask anybody for. If you have no account yet, that page makes one and puts you on the community's register in the same go." },
       { t: "Once marked, the card is gone", d: "You cannot check in twice at the same gathering. If you change your mind about a future Sunday, use “Not attending”." },
       { t: "Send an apology in advance", d: "Not coming? Leave a note against that day. It is filed separately from attendance and does not count as a mark." },
-      { t: "Share a testimony", d: "Anything you post goes to the leader or admin first. Once approved, the whole community sees it." },
+      { t: "Share a testimony", d: "Post what God is doing in your life and it appears on the community's list for everyone there to read. There is no approval step today, so write it the way you would say it out loud." },
     ],
   },
   communities: {
     heading: "Communities",
     intro: "This page lists every fellowship you belong to. Each card opens its dashboard.",
     steps: [
-      { t: "Join one", d: "Press “Join by code” and type the six characters your leader shared. The code is the door — anyone with it becomes a plain member of that community." },
+      { t: "Join one", d: "Press “Join by code” and type the six characters your leader shared. The code is the door — anyone with it becomes a plain member of that community. The one exception is a scan during an open check-in, which joins you from those four digits instead." },
       { t: "Start one", d: "Press “Create a community”. You become its admin and get a code to hand out. Nothing about its structure can be changed later except the code." },
-      { t: "There is no invite-by-email yet", d: "You cannot add a specific person; you share the code and they add themselves. Same rule applies whether you are a member or an admin." },
+      { t: "There is no invite-by-email yet", d: "You cannot add a specific person; you share the code and they add themselves. Same rule applies whether you are a member or an admin — unless a check-in is open, where the scan does it on the PIN's word." },
       { t: "Leave one", d: "Not yet built. For now an admin has to remove you, so keep the code you give out close to people you actually want in the room." },
     ],
   },
@@ -75,8 +76,9 @@ const CONTENT = {
     heading: "Feedback",
     intro: "Five questions about the app itself. Nothing you write shows up on any dashboard.",
     steps: [
-      { t: "It is anonymous by default", d: "Tick the box at the bottom of the form only if you want a reply to be possible. Left off, the row carries no address." },
-      { t: "Admins see the whole pile", d: "Because the table is not tied to a community, every community's admin can read every row. Assume that anything you write will be read by somebody who runs a different fellowship." },
+      { t: "It is signed, not printed", d: "The address on your note is the one you signed in with — there is no box to tick. It is written to the database and it travels into an export, and it is never shown next to your words on the pile page." },
+      { t: "Everyone can read the pile", d: "Press \"See what others have said\" — or open the same list at /feedback/all, which also exports it to Excel and PDF. The feedback is about the app, so it belongs to everybody who uses it, not to the small set of people who administer a fellowship." },
+      { t: "Your words are still yours to stand by", d: "Nobody sees your address on the page, but whoever runs the app can pair a note with the account that wrote it. Say what you mean in the text you choose to leave in." },
     ],
   },
 };
@@ -84,7 +86,7 @@ const CONTENT = {
 const css = `
 .gd-scrim{position:fixed;inset:0;background:rgba(17,17,17,.55);opacity:0;pointer-events:none;transition:opacity .25s ease;z-index:60}
 .gd-scrim.on{opacity:1;pointer-events:auto}
-.gd-panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-48%);opacity:0;pointer-events:none;background:#fff;color:#111;border:1px solid #d4d4d4;border-radius:2px;max-width:min(640px,92vw);max-height:min(86vh,720px);overflow:auto;padding:32px 34px;z-index:70;transition:opacity .22s ease,transform .22s ease;font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;line-height:1.55}
+.gd-panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-48%);opacity:0;pointer-events:none;background:#fff;color:#111;border:1px solid #d4d4d4;border-radius:2px;width:min(640px,100%);max-height:min(86vh,720px);overflow:auto;padding:32px 34px;z-index:70;transition:opacity .22s ease,transform .22s ease;font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;line-height:1.55;box-sizing:border-box}
 .gd-panel.on{opacity:1;pointer-events:auto;transform:translate(-50%,-50%)}
 .gd-panel .serif{font-family:"Playfair Display",Georgia,serif;font-weight:500}
 .gd-panel .close{position:absolute;top:12px;right:14px;background:none;border:0;font-size:22px;line-height:1;cursor:pointer;color:#111;padding:4px 8px}
@@ -98,6 +100,15 @@ const css = `
 .gd-panel .row{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
 .gd-panel .btn{background:#111;color:#fff;border:1px solid #111;border-radius:2px;padding:10px 22px;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer}
 .gd-panel .btn.ghost{background:#fff;color:#111}
+/* Below the 640px content cap the panel used to sit at 92% of the screen and still lose 34px to
+   each inner gutter, which on a phone left a narrow column of text. Now it runs edge-to-edge with
+   20px gutters, and the step numbers tighten so the hanging indent still looks deliberate. */
+@media (max-width:640px){
+.gd-panel{padding:26px 20px 22px;max-height:min(92vh,720px);border-radius:0;border-left:0;border-right:0}
+.gd-panel h2{font-size:24px}
+.gd-panel li{padding-left:38px}
+.gd-panel li::before{width:28px;height:28px;font-size:13px}
+}
 `;
 
 export default function Guide({ role, open, onClose }) {

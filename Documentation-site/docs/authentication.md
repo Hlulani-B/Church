@@ -33,7 +33,7 @@ message with a link to create an account instead of redirecting there.
 | `/forgot-password` | `src/pages/forgot_password.jsx` | `sendPasswordResetEmail`, with a resend button |
 | `/terms` | `src/pages/TCs.jsx` | The policy text, linked from the agree checkbox on `/signup` |
 | `/community` | `src/pages/community.jsx` | The signed-in home page: greets the visitor from their own `users` row, lists their communities and opens new ones from a popup |
-| `/profile` | `src/pages/profile.jsx` | Changes **name and surname only**, through `/api/self` `user` `update` |
+| `/profile` | `src/pages/profile.jsx` | Changes **name and surname** through `/api/self` `user` `update`, sends a password-reset mail to the signed-in address, lists every community with the caller's role on each so a card opens its own dashboard, and links to the feedback form |
 | `/admin-dashboard` | `src/admin/Dashboard.jsx` | Headed **Admin**, the community's name and the signed-in address, over the roster of that community — name, surname and role from `users` joined onto `community_members`, with no address in the table but the caller's own, in the heading — searchable by name or surname, with that community's join code beside it to copy or draw again, and a ⋮ menu on every row but the signed-in one to put that person in another role or remove them |
 | `/admin-attendance` | `src/admin/attendance.jsx` | Every gathering this community has recorded, newest first, with how many of its rows were present; pressing one lists everyone recorded at it, present and absent, by name. At the top is the page's one write: a notice that whoever is signed in will not be at a gathering, whose day may not have come yet, with a reason written in their own words and offered the usual five as suggestions, which they may leave blank |
 | `/admin-testimonies` | `src/admin/testimonies.jsx` | The community's testimonies, newest first, a hundred at a time, searched by date and by name — read by the browser straight from Supabase, which is why the names on those rows come from the roster rather than from a join |
@@ -170,7 +170,8 @@ has reported a person (see below), never from a mount effect that runs while the
 still unknown — which is what made `/admin-dashboard` show that error. A new page read is a new method in the matching
 `src/page_functions/` file, never a raw fetch written inside a page. That token is what the
 endpoint verifies. A browser token is held to the whitelist of whichever door it knocked on —
-**self**: `user` `find`/`create`/`update`, `community` `memberOf`/`create`/`join`, `member`
+**self**: `user` `find`/`create`/`update`, `community` `memberOf`/`create`/`join`/
+`join_at_session`, `member`
 `find`/`create`, `event` `record`/`checkin`, `session` `open`/`live`; **leader**: `attendance`
 `services`/`service`, `admin` `roster`, `session` `create`/`pin`/`manage`/`revise`; **admin**:
 `admin` `changeCode`/`assign`, `member` `remove`, `community` `find` — and the email

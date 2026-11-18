@@ -231,10 +231,6 @@ export default function MemberDashboard() {
         <h1 className="serif">{heading.name || "This community"}</h1>
         <p className="sub">{admin.email}</p>
 
-        {/* Attendance comes first: whatever is being taken right now sits above everything else, and
-            the alert itself carries the PIN box, so nobody has to scroll to answer a live count. */}
-        {communityId && <SessionLive community_id={communityId} />}
-
         {communityId && (
           <div className="links">
             <button
@@ -243,8 +239,19 @@ export default function MemberDashboard() {
             >
               View testimonies
             </button>
+            <button
+              type="button"
+              onClick={() => navigate("/feedback")}
+            >
+              Feedback
+            </button>
           </div>
         )}
+
+        {/* Attendance comes next: whatever is being taken right now sits above everything else
+            that is not a way out of this page, and the alert itself carries the PIN box, so
+            nobody has to scroll to answer a live count. */}
+        {communityId && <SessionLive community_id={communityId} />}
 
         {!communityId ? (
           <div className="note">

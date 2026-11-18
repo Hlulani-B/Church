@@ -144,6 +144,17 @@ export default function MemberTestimonies() {
         <h1 className="serif">{admin.name || "This community"}</h1>
         <p className="sub">{admin.email}</p>
 
+        {/* The way out comes before the list, not after it. On a community with dozens of
+            testimonies the bottom of the page is a long scroll away, and by then the person
+            reading has already forgotten where they came from. */}
+        <button
+          className="back"
+          type="button"
+          onClick={() => navigate("/member-dashboard", { state: admin })}
+        >
+          Back to the dashboard
+        </button>
+
         {!communityId ? (
           <div className="note">
             No community was chosen, so there is nothing to read here. Go back, click a

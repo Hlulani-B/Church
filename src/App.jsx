@@ -7,10 +7,10 @@ import TermsPage from './pages/TCs.jsx'
 import CommunityPage from './pages/community.jsx'
 import ProfilePage from './pages/profile.jsx'
 import FeedbackPage from './pages/feedback.jsx'
+import FeedbackList from './pages/feedback_list.jsx'
 import AdminDashboard from './admin/Dashboard.jsx'
 import AdminTestimonies from './admin/testimonies.jsx'
 import AdminAttendance from './admin/attendance.jsx'
-import AdminFeedback from './admin/feedback.jsx'
 import LeaderDashboard from './leader/Dashboard.jsx'
 import LeaderTestimonies from './leader/testimonies.jsx'
 import LeaderAttendance from './leader/attendance.jsx'
@@ -40,10 +40,10 @@ function App() {
         <Route path="/community" element={<CommunityPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/feedback" element={<FeedbackPage />} />
+        <Route path="/feedback/all" element={<FeedbackList />} />
         <Route path="/admin-dashboard" element={<AdminDashboard />} />
         <Route path="/admin-testimonies" element={<AdminTestimonies />} />
         <Route path="/admin-attendance" element={<AdminAttendance />} />
-        <Route path="/admin-feedback" element={<AdminFeedback />} />
         <Route path="/leader-dashboard" element={<LeaderDashboard />} />
         <Route path="/leader-testimonies" element={<LeaderTestimonies />} />
         <Route path="/leader-attendance" element={<LeaderAttendance />} />

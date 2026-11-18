@@ -58,6 +58,33 @@ export class CommunityFetch {
   }
 
   /*
+    Joining from a QR scan, the way in for a first-timer standing at the door. The three params
+    are the ones the code in that picture carried, and the four digits do the work the six
+    characters used to do: /api/self matches them against a check-in that is open at this exact
+    second and takes the community off that row, so nothing here can name a fellowship and ask to
+    be added to it, and the role is 'member' because the server writes it and takes it from nobody.
+
+    The address is not passed at all — the endpoint fills it from this browser's own id token, so
+    a scan cannot enrol somebody who is not the one holding the phone.
+
+    Unlike joinCommunity above, being a member already is a success here rather than an error: this
+    runs on the way to a check-in, on a screen a whole room scans, and a stranger's arrival should
+    not depend on whether the person beside them had already signed up last week.
+  */
+  async joinAtSession({ community_id, session_id, pin }) {
+    const digits = String(pin || '').trim()
+    if (!community_id || !session_id || !/^\d{4}$/.test(digits)) {
+      throw new Error('This QR code did not carry a community, a session and four digits.')
+    }
+    return callGod('community', {
+      function: 'join_at_session',
+      community_id,
+      session_id,
+      pin: digits,
+    })
+  }
+
+  /*
     Where this person's dashboard for a community lives. The role comes from
     community_members for that (email, community_id) pair, and /api/self answers with the
     address on the caller's own id token rather than the one passed in, so a browser

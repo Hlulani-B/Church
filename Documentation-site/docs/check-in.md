@@ -5,6 +5,55 @@ by one phone at a time, and eventually **ended** — either by its window runnin
 opened it calling it off. This page follows a session through those four states and names the
 invariants that keep a register honest along the way.
 
+## The whole path in one picture
+
+```mermaid
+flowchart TD
+    Start([Leader opens take-attendance]) --> Name[Name the gathering<br/>choose window and radius]
+    Name --> Overlap{Another session<br/>already overlaps<br/>this window?}
+    Overlap -- yes --> Reject409([Refused: 409<br/>one check-in at a time])
+    Overlap -- no --> Insert[Insert session row<br/>cancel=false]
+    Insert --> Auto[Leader auto-marked<br/>present for that event]
+    Auto --> Show[Show PIN and QR<br/>link carries pin, session<br/>and community to /qr]
+
+    Show --> Offer{{Every 15 s: Session.live<br/>on every member dashboard}}
+    Offer --> Window{started_at ≤ now ≤ ended_at?}
+    Window -- no --> Offer
+    Window -- yes --> Cancel{cancel is false or null?}
+    Cancel -- no --> Offer
+    Cancel -- yes --> Marked{Caller already<br/>marked present?}
+    Marked -- yes --> Offer
+    Marked -- no --> Card[Card appears on<br/>the member's phone]
+
+    Card --> Path{Which door?}
+    Path -- typed PIN --> Submit[POST /api/self<br/>event.checkin]
+    Path -- scanned QR --> QrPage[/qr landing<br/>signs a first-timer up inline/]
+    QrPage --> Join[POST /api/self<br/>community.join_at_session<br/>no join code asked for]
+    Join --> Submit
+
+    Submit --> PinOk{PIN matches<br/>a session?}
+    PinOk -- no --> Refuse1([Refused:<br/>the pin is wrong])
+    PinOk -- yes --> WinOk{Inside the window<br/>on the server clock?}
+    WinOk -- no --> Refuse2([Refused:<br/>the session is not open])
+    WinOk -- yes --> NearOk{Within radius,<br/>or allow_any_radius?}
+    NearOk -- no --> Refuse3([Refused:<br/>too far from the room])
+    NearOk -- yes --> Dup{An event row<br/>with attend=true?}
+    Dup -- yes --> Echo[Return already=true<br/>with the original timestamp]
+    Dup -- no --> Write[Insert event row<br/>attend=true]
+
+    Echo --> Gone
+    Write --> Gone[Card disappears<br/>from this phone]
+    Gone --> Toast[Toast two seconds later:<br/>Register marked]
+    Toast --> End([Done])
+
+    classDef refuse fill:#fff,stroke:#a11111,color:#a11111
+    class Reject409,Refuse1,Refuse2,Refuse3 refuse
+```
+
+Read the shape of it, not the labels — the four loops at the top are the fifteen-second poll
+turning over, and once a card is on screen there is exactly one write and one removal. Every
+refusal path is a rule the browser cannot negotiate.
+
 ## Opening
 
 The leader's dashboard mounts `AttendanceControl` (`src/components/checkin.jsx`), which collects
@@ -74,20 +123,46 @@ Two doors into the same write:
 
 === "Scan the QR"
 
-    The leader's screen — either during `Take attendance` or on the admin's QR view — renders
-    `<img src={qrPng(payload)}>` where `payload` is `${window.location.origin}/qr/?s=<session_id>`.
-    The URL is derived at render time, so the same page deployed to preview, staging or production
-    always emits a QR that points at wherever it is being viewed from. Nothing is hardcoded.
+    The leader's screen renders `QrCard` (`src/components/qr_code.jsx`), which encodes
+    `${origin}/qr?pin=…&session_id=…&community_id=…` — the three things the landing page reads off
+    the URL. The link is built at render time from `window.location.origin`, so the same page
+    deployed to preview, staging or production always emits a QR that points at wherever it is
+    being viewed from. Nothing is hardcoded. It can be maximised for a projector, printed, or
+    downloaded as a PNG.
 
     The `/qr` subapp (`qr/Qr.jsx`) is a separate Vite entry — `dist/qr/qr.html` — so a phone that
     scans the code does not have to download the whole SPA before it can check in. It signs in,
-    asks for geolocation, and posts the same check-in call as the dashboard's card does. A
-    first-timer with no account gets an inline **Join** form on the same page that creates a
-    Firebase user, writes the `users` row, and calls `community.join` with the six-character
-    code, all before it tries to check in.
+    asks for geolocation, and posts the same check-in call as the dashboard's card does.
 
-Both doors hit the same `Session.checkIn(community_id, pin, latitude, longitude, email)` in
-`src/functions/session.js`, which is the only place that decides whether a check-in is true:
+    Before that arrival is posted, the scan's four digits are spent once on
+    `community.join_at_session`, which adds the caller to the fellowship if they are not already in
+    it. A first-timer with no account gets an inline **Join** form that creates the Firebase user,
+    writes the `users` row and then takes that same step — no address is ever passed to it, since
+    the endpoint reads it off the id token, so a scan cannot enrol anybody who is not holding the
+    phone.
+
+!!! info "Why the QR page stopped asking for a join code"
+    A stranger at the door was expected to type six characters that only an admin's dashboard
+    shows — a leader taking attendance could not even read them off the community row. The PIN of
+    the open check-in is the better credential in that exact moment: it proves the same fact the
+    register is about to write down, and it answers only while the session's window is open, so a
+    photograph of the screen stops working when the gathering ends.
+
+    The endpoint therefore insists on the PIN matching a session that is open *now*, reads the
+    community off that session's row rather than off whatever id the request claims, writes
+    `role: 'member'` itself, and answers for the address on the token. What is being trusted is
+    "somebody standing in this room during this gathering", which is precisely what a check-in
+    means. The join code still rules everywhere else: `community.join` on the `/community` page is
+    unchanged, and joining a fellowship that is not meeting still needs it.
+
+    It costs one extra POST per scan, and it is the reason `/qr` no longer has a join-code box.
+
+## What decides a check-in is true
+
+Both doors end at the same place: the `event` `checkin` branch in `api/self.js`, which is the only
+place that decides whether a check-in is true. Its session lookup goes through `Session.all` and
+`pickOpenSession` in `src/functions/session.js` — the same pair the membership step above uses, so
+a PIN cannot be open for one and closed for the other:
 
 1. Look up the `session` by `(community_id, pin)` with the same `cancel` filter as above. No
    row → *the pin is wrong*.

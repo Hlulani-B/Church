@@ -1,6 +1,7 @@
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
 } from 'firebase/auth'
@@ -38,6 +39,20 @@ export class Auth {
 
   current() {
     return view(this.auth.currentUser)
+  }
+
+  /*
+    The signed-in person asking for a reset link. There is a different flow on the
+    forgot-password page, for somebody who cannot sign in at all and has to type the
+    address by hand; this one is for somebody already at /profile who has simply
+    forgotten what they set. Passing the currentUser rather than a typed address is what
+    makes it impossible to trick this call into emailing somebody else.
+  */
+  async resetPassword() {
+    const user = this.auth.currentUser
+    if (!user?.email) throw new Error('Nobody is signed in on this browser.')
+    await sendPasswordResetEmail(this.auth, user.email)
+    return user.email
   }
 
   /*

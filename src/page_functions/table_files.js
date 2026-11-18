@@ -1,16 +1,18 @@
 /*
-  The two writers behind the export buttons. They are handed rows and nothing else: reading is
-  src/page_functions/testimonies.js, and this file only turns rows that were already read into
-  something that leaves the browser. Both formats carry the same four columns in the same order.
+  The two writers behind the export buttons. They are handed rows, a list of columns and
+  nothing else: reading belongs to the page function that called them, and this file only turns
+  rows that were already read into something that leaves the browser.
 
-  The .xlsx is written here rather than pulled in as a dependency: a zip of six small parts,
-  stored rather than deflated, with the date as a real date cell so Excel sorts and filters it
-  as a date. The PDF is written here for the same reason, and by the same kind of hand: the
-  pages are drawn with the two standard fonts every reader already carries, so neither export
-  prints anything, opens a window or asks for a permission — both are a file in the downloads.
+  Both formats are written here rather than pulled in as a dependency. The .xlsx is a zip of six
+  small parts, stored rather than deflated, with a date carried as a real date cell so Excel sorts
+  and filters it as a date. The PDF is drawn with the two standard fonts every reader already
+  carries, so neither export prints anything, opens a window or asks for a permission — both are a
+  file in the downloads.
+
+  The columns are a parameter because two tables are exported now and they are not shaped alike:
+  a testimony is four columns with one long one, feedback is eight with three long ones. Nothing
+  below a column list knows which of the two it is writing.
 */
-
-const HEADS = ['Name', 'Surname', 'Date', 'Testimony']
 
 // Excel counts days from 1899-12-30, and a testimony date is a plain calendar day.
 const EXCEL_EPOCH = Date.UTC(1899, 11, 30)
@@ -18,6 +20,11 @@ const MAIN = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 const PKG = 'http://schemas.openxmlformats.org/package/2006/relationships'
 const DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+
+// The last column letter either writer will ever need. A sheet past this point is not a
+// mistake — it is a table somebody added to without telling the exporter — and a file with
+// silently missing columns is worse than a refusal.
+const LAST_COLUMN = 'Z'
 
 function day(text) {
   return String(text ?? '').slice(0, 10)
@@ -35,6 +42,40 @@ function pretty(date) {
     : new Date(read).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
+// A moment to a person who opened the file, on a page that has no column width to work with.
+function moment(iso) {
+  const read = new Date(iso)
+  return Number.isNaN(read.getTime())
+    ? String(iso ?? '')
+    : read.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+/*
+  What a column list may carry. `key` is where the value lives, `get` computes one instead — a
+  rating written as "4/5", a yes/no read out rather than left as a boolean — and `kind` tells the
+  writers when a value is a date they should treat as one instead of as words.
+
+  `width` is points in the PDF and characters in the sheet; the last one without a `pdfWidth`
+  takes whatever the page has left, which is why exactly one column in a table should set it.
+*/
+function columnsOf(options) {
+  const list = (options.columns || []).map((one) => ({
+    head: one.head,
+    get: one.get || ((row) => row[one.key]),
+    kind: one.kind || 'text',
+    sheetWidth: one.sheetWidth || 30,
+    pdfWidth: one.pdfWidth,
+  }))
+  if (!list.length) throw new Error('An export needs at least one column.')
+  if (list.length > LAST_COLUMN.charCodeAt(0) - 64) {
+    throw new Error(`An export can write up to column ${LAST_COLUMN}; this one asks for more.`)
+  }
+  if (!list.some((one) => one.pdfWidth === undefined)) {
+    throw new Error('One column has to be left to take the rest of the PDF page.')
+  }
+  return list
+}
+
 // The search a file was written out of, once for a filename and once for a sentence. A name
 // is part of that search now, and a file of one person's sharing said only "all dates" would
 // be answering a different question from the one that was asked.
@@ -45,7 +86,7 @@ function stamp({ from, to } = {}) {
   return 'all_dates'
 }
 
-function spoken({ from, to, name } = {}) {
+function spoken({ from, to, name } = {}, singular = 'row', plural = 'rows') {
   const days =
     from && to
       ? `${pretty(from)} to ${pretty(to)}`
@@ -55,7 +96,9 @@ function spoken({ from, to, name } = {}) {
           ? `up to ${pretty(to)}`
           : 'every date'
   const who = String(name || '').trim()
-  return who ? `${days}, shared by ${who}` : days
+  // One row's search reads "14 May 2026, testimony shared by Grace"; a range reads
+  // "… to …, testimonies shared by Grace", because the word is describing everything matched.
+  return who ? `${days}, ${from && to ? plural : singular} shared by ${who}` : days
 }
 
 // A search term becomes part of a download name, so it is cut down to what a file may be
@@ -75,7 +118,7 @@ function fileName(title, search, extension) {
     String(title || '')
       .replace(/[^A-Za-z0-9._ -]+/g, ' ')
       .trim()
-      .replace(/\s+/g, '-') || 'testimonies'
+      .replace(/\s+/g, '-') || 'export'
   return `${clean}${byline(search?.name)}_${stamp(search)}.${extension}`
 }
 
@@ -84,16 +127,16 @@ function fileName(title, search, extension) {
   and an empty document both look like success and are neither, so the page is handed a
   sentence to show instead.
 */
-function check(rows) {
-  if (!rows.length) throw new Error('No testimonies match this search, so there is nothing to export.')
+function check(rows, { empty } = {}) {
+  if (!rows.length) throw new Error(empty || 'Nothing matches this search, so there is nothing to export.')
   return rows
 }
 
 /*
-  A testimony is typed by a person and pasted from anywhere, so both writers assume nothing
-  about what is in it. XML 1.0 has no room for the control range at all — a single stray
-  character of it makes the whole workbook unreadable — so those are dropped while the newline
-  and the tab that hold a testimony's paragraphs stay.
+  A cell is typed by a person and pasted from anywhere, so both writers assume nothing about
+  what is in it. XML 1.0 has no room for the control range at all — a single stray character of
+  it makes the whole workbook unreadable — so those are dropped while the newline and the tab
+  that hold a paragraph stay.
 */
 function xml(text) {
   let kept = ''
@@ -102,6 +145,12 @@ function xml(text) {
     kept += code < 32 && code !== 9 && code !== 10 && code !== 13 ? ' ' : one
   }
   return kept.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+// A sheet name may not hold any of these and stops at 31 characters.
+function sheetName(title) {
+  const named = String(title || '').replace(/[[\]:*?/\\]/g, ' ').trim().slice(0, 31)
+  return xml(named || 'Export')
 }
 
 const CRC = (() => {
@@ -182,9 +231,9 @@ const ROOT_RELS =
   `<Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/>` +
   '</Relationships>'
 
-const WORKBOOK =
+const workbook = (title) =>
   `${DECL}<workbook xmlns="${MAIN}" xmlns:r="${REL}">` +
-  '<sheets><sheet name="Testimonies" sheetId="1" r:id="rId1"/></sheets></workbook>'
+  `<sheets><sheet name="${sheetName(title)}" sheetId="1" r:id="rId1"/></sheets></workbook>`
 
 const WORKBOOK_RELS =
   `${DECL}<Relationships xmlns="${PKG}">` +
@@ -193,7 +242,7 @@ const WORKBOOK_RELS =
   '</Relationships>'
 
 /*
-  Four styles, which is all the sheet asks for: plain, a bold header, text that starts at the
+  Four styles, which is all a sheet asks for: plain, a bold header, text that starts at the
   top of a cell and wraps rather than running off the page, and a date written as
   YYYY-MM-DD so the column reads the way the search on screen reads.
 */
@@ -216,35 +265,50 @@ const STYLES =
 
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
-// Four columns, so the letter is never further along the alphabet than D.
+// Column letters, generated rather than spelled out, because the count is no longer fixed.
 const at = (row, col) => `${String.fromCharCode(65 + col)}${row}`
 
 function text(row, col, value, style) {
   return `<c r="${at(row, col)}" t="inlineStr" s="${style}"><is><t xml:space="preserve">${xml(value)}</t></is></c>`
 }
 
-function sheetXml(rows) {
-  const head = `<row r="1">${HEADS.map((one, col) => text(1, col, one, 1)).join('')}</row>`
-  const body = rows.map((one, n) => {
-    const row = n + 2
-    const serial = dayNumber(one.date)
-    // A day the sheet can count is written as one; anything odder is written as it came.
-    const date = serial === null
-      ? text(row, 2, one.date, 2)
-      : `<c r="${at(row, 2)}" s="3"><v>${serial}</v></c>`
-    return `<row r="${row}">${text(row, 0, one.name, 2)}${text(row, 1, one.surname, 2)}${date}${text(row, 3, one.body, 2)}</row>`
+// Consecutive columns wanting the same sheet width are grouped into one <col> element.
+function columnTags(columns) {
+  let out = ''
+  for (let start = 0; start < columns.length;) {
+    let end = start
+    while (end + 1 < columns.length && columns[end + 1].sheetWidth === columns[start].sheetWidth) end += 1
+    out += `<col min="${start + 1}" max="${end + 1}" width="${columns[start].sheetWidth}" customWidth="1"/>`
+    start = end + 1
+  }
+  return out
+}
+
+function sheetXml(rows, columns) {
+  const last = columns.length - 1
+  const span = `A1:${String.fromCharCode(65 + last)}${rows.length + 1}`
+  const head = `<row r="1">${columns.map((one, col) => text(1, col, one.head, 1)).join('')}</row>`
+  const body = rows.map((row, n) => {
+    const at_row = n + 2
+    const cells = columns.map((one, col) => {
+      const value = one.get(row)
+      if (one.kind !== 'date') return text(at_row, col, value, 2)
+      const serial = dayNumber(value)
+      // A day the sheet can count is written as one; anything odder is written as it came.
+      return serial === null
+        ? text(at_row, col, value, 2)
+        : `<c r="${at(at_row, col)}" s="3"><v>${serial}</v></c>`
+    })
+    return `<row r="${at_row}">${cells.join('')}</row>`
   }).join('')
-  const last = rows.length + 1
   return (
-    `${DECL}<worksheet xmlns="${MAIN}"><dimension ref="A1:D${last}"/>` +
+    `${DECL}<worksheet xmlns="${MAIN}"><dimension ref="${span}"/>` +
     '<sheetViews><sheetView tabSelected="1" workbookViewId="0">' +
     '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
     '<sheetFormatPr defaultRowHeight="15"/>' +
-    '<cols><col min="1" max="2" width="20" customWidth="1"/>' +
-    '<col min="3" max="3" width="12" customWidth="1"/>' +
-    '<col min="4" max="4" width="110" customWidth="1"/></cols>' +
+    `<cols>${columnTags(columns)}</cols>` +
     `<sheetData>${head}${body}</sheetData>` +
-    `<autoFilter ref="A1:D${last}"/></worksheet>`
+    `<autoFilter ref="${span}"/></worksheet>`
   )
 }
 
@@ -264,23 +328,25 @@ function save(bytes, name, type) {
   return name
 }
 
-export function downloadExcel(rows, { title, dates = {} } = {}) {
-  const wanted = check(rows)
+export function downloadExcel(rows, options = {}) {
+  const wanted = check(rows, options)
+  const columns = columnsOf(options)
   const bytes = zip([
     { name: '[Content_Types].xml', text: CONTENT_TYPES },
     { name: '_rels/.rels', text: ROOT_RELS },
-    { name: 'xl/workbook.xml', text: WORKBOOK },
+    { name: 'xl/workbook.xml', text: workbook(options.title) },
     { name: 'xl/_rels/workbook.xml.rels', text: WORKBOOK_RELS },
     { name: 'xl/styles.xml', text: STYLES },
-    { name: 'xl/worksheets/sheet1.xml', text: sheetXml(wanted) },
+    { name: 'xl/worksheets/sheet1.xml', text: sheetXml(wanted, columns) },
   ])
-  return { name: save(bytes, fileName(title, dates, 'xlsx'), XLSX), count: wanted.length }
+  return { name: save(bytes, fileName(options.title, options.dates, 'xlsx'), XLSX), count: wanted.length }
 }
 
 /*
   The PDF is made here, byte by byte, because the alternative is a font library in the
-  bundle. It is a plain table on A4: four columns, the header repeated at the top of every
-  page, a testimony wrapped over as many lines as it needs and never split across a page.
+  bundle. It is a plain table on A4: the columns it was handed, the header repeated at the top
+  of every page, and a long cell wrapped over as many lines as it needs and never split across
+  a page.
 
   The two standard fonts carry their own widths, so wrapping is measured with the real
   Helvetica metrics rather than guessed at. Those fonts answer to cp1252 bytes, which is a
@@ -314,7 +380,7 @@ const RARE = {
   150: 556, 151: 1000, 153: 1000,
 }
 
-// The punctuation a testimony picks up off a phone, in the byte the font draws it with.
+// The punctuation a paragraph picks up off a phone, in the byte the font draws it with.
 const CP1252 = {
   '\u20ac': 128, '\u201a': 130, '\u0192': 131, '\u201e': 132, '\u2026': 133,
   '\u2020': 134, '\u2021': 135, '\u02c6': 136, '\u2030': 137, '\u0160': 138,
@@ -358,7 +424,7 @@ function width(text) {
 }
 
 // `text` inside a column `max` points wide: broken on spaces, and inside a word only when
-// the word alone is wider than the column. A newline in a testimony is kept as one.
+// the word alone is wider than the column. A newline in a paragraph is kept as one.
 function wrap(text, max) {
   const lines = []
   for (const para of drawn(text).split('\n')) {
@@ -391,18 +457,26 @@ function wrap(text, max) {
   return lines.length ? lines : ['']
 }
 
-// Column widths, and the four values of a row in that order. The last column takes what is
-// left, because the testimony is the only part of the row with no length of its own.
-const COLS = [82, 82, 62, A4_W - 2 * EDGE - 226]
+/*
+  The points each column gets on the page. Every one but the widest was told what to be; the
+  rest of the page is split between whatever is left over, because prose is the only part of a
+  row with no length of its own.
+*/
+function pdfWidths(columns) {
+  const page = A4_W - 2 * EDGE
+  const fixed = columns.filter((one) => one.pdfWidth !== undefined)
+  const spare = columns.length - fixed.length
+  const room = Math.max(40, (page - fixed.reduce((n, one) => n + one.pdfWidth, 0)) / spare)
+  return columns.map((one) => (one.pdfWidth === undefined ? room : one.pdfWidth))
+}
+
 const TOP_FIRST = A4_H - EDGE - 56 // under the title block
 const TOP_NEXT = A4_H - EDGE - 4 // where the header sits on a page of its own
 const HEADER = LEAD + 4
 const FLOOR = EDGE + 18 // the footer line lives below this
 
-function rowCells(one) {
-  return [one.name, one.surname, one.date, one.body].map((text, i) =>
-    wrap(text, COLS[i] - 8),
-  )
+function rowCells(one, columns, widths) {
+  return columns.map((column, i) => wrap(column.get(one), widths[i] - 8))
 }
 
 // Rows grouped into pages: a row goes to the next page whole rather than being split, the
@@ -413,7 +487,7 @@ const drop = (cells, n) => cells.map((lines) => lines.slice(n))
 const filled = (cells) => cells.some((lines) => lines.length)
 const linesOf = (cells) => Math.max(...cells.map((lines) => lines.length), 1)
 
-function layout(rows) {
+function layout(rows, columns, widths) {
   const pages = []
   let head = TOP_FIRST
   let top = head - HEADER
@@ -424,7 +498,7 @@ function layout(rows) {
     top = head - HEADER
     page = []
   }
-  for (const source of rows.map(rowCells)) {
+  for (const source of rows.map((one) => rowCells(one, columns, widths))) {
     let rest = source
     while (filled(rest)) {
       let cells = rest
@@ -468,8 +542,11 @@ const put = (x, y, text, { font = 'F1', size = TEXT, color = '0 0 0' } = {}) =>
 const rect = (x, y, w, h) => `${num(x)} ${num(y)} ${num(w)} ${num(h)} re\n`
 
 // The left edge of each column, then the right edge of the last one.
-const X = [EDGE]
-for (const one of COLS) X.push(X[X.length - 1] + one)
+function edges(widths) {
+  const X = [EDGE]
+  for (const one of widths) X.push(X[X.length - 1] + one)
+  return X
+}
 
 /*
   One page, drawn top down. The y axis of a PDF grows upwards, so a row's `top` is where its
@@ -477,21 +554,28 @@ for (const one of COLS) X.push(X[X.length - 1] + one)
   than before it — the order makes no difference to what is on the paper, but the rules must
   be grey and the words black, and each command says which of the two it is drawing.
 */
-function pageStream(index, page, total, title, dates, count) {
+function pageStream(index, page, total, options, columns, widths) {
+  const X = edges(widths)
+  const right = X[X.length - 1] - EDGE
+  const one = options.noun?.singular || 'row'
+  const many = options.noun?.plural || 'rows'
+  const count = options.count
   let out = ''
   if (index === 0) {
-    out += put(EDGE, A4_H - EDGE - 18, title, { font: 'F2', size: 17 })
-    out += put(EDGE, A4_H - EDGE - 34, `${count} ${count === 1 ? 'testimony' : 'testimonies'} — ${spoken(dates)}`, {
-      size: 9,
-      color: '0.35 0.35 0.35',
-    })
-    out += `0.6 w\n0.1 0.1 0.1 RG\n${rect(EDGE, A4_H - EDGE - 44, X[X.length - 1] - EDGE, 0)}S\n`
+    out += put(EDGE, A4_H - EDGE - 18, options.title, { font: 'F2', size: 17 })
+    out += put(
+      EDGE,
+      A4_H - EDGE - 34,
+      `${count} ${count === 1 ? one : many} — ${spoken(options.dates, one, many)}`,
+      { size: 9, color: '0.35 0.35 0.35' },
+    )
+    out += `0.6 w\n0.1 0.1 0.1 RG\n${rect(EDGE, A4_H - EDGE - 44, right, 0)}S\n`
   }
   out += '0.7 w\n0.62 0.62 0.62 RG\n'
-  out += `0.92 0.92 0.92 rg\n${rect(EDGE, page.head - HEADER, X[X.length - 1] - EDGE, HEADER)}f\n`
-  HEADS.forEach((one, col) => {
-    out += put(X[col] + 4, page.head - HEADER / 2 - 3, one, { font: 'F2' })
-    out += rect(X[col], page.head - HEADER, COLS[col], HEADER)
+  out += `0.92 0.92 0.92 rg\n${rect(EDGE, page.head - HEADER, right, HEADER)}f\n`
+  columns.forEach((one, col) => {
+    out += put(X[col] + 4, page.head - HEADER / 2 - 3, one.head, { font: 'F2' })
+    out += rect(X[col], page.head - HEADER, widths[col], HEADER)
   })
   out += 'S\n'
   for (const row of page.rows) {
@@ -499,7 +583,7 @@ function pageStream(index, page, total, title, dates, count) {
       lines.forEach((line, k) => {
         out += put(X[col] + 4, row.top - TEXT - 4 - k * LEAD, line, { font: 'F1' })
       })
-      out += rect(X[col], row.top - row.height, COLS[col], row.height)
+      out += rect(X[col], row.top - row.height, widths[col], row.height)
     })
     out += 'S\n'
   }
@@ -512,17 +596,18 @@ function pageStream(index, page, total, title, dates, count) {
   content stream per page. Offsets are counted in bytes as the pieces go out, which is why
   every string written here has already been through `drawn` — one character, one byte.
 */
-function pdfBytes(rows, title, dates, count) {
-  const pages = layout(rows)
+function pdfBytes(rows, columns, options) {
+  const widths = pdfWidths(columns)
+  const pages = layout(rows, columns, widths)
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     `<< /Type /Pages /Count ${pages.length} /Kids [${pages.map((_, i) => `${6 + i * 2} 0 R`).join(' ')}] >>`,
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
-    `<< /Title (${literal(title)}) /Subject (Testimonies) /Creator (Kopano) /Producer (Kopano) >>`,
+    `<< /Title (${literal(options.title)}) /Subject (${literal(options.subject || 'Export')}) /Creator (Kopano) /Producer (Kopano) >>`,
   ]
   pages.forEach((page, i) => {
-    const content = pageStream(i, page, pages.length, title, dates, count)
+    const content = pageStream(i, page, pages.length, { ...options, count: rows.length }, columns, widths)
     objects.push(
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(A4_W)} ${num(A4_H)}]` +
         ` /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${objects.length + 2} 0 R >>`,
@@ -545,8 +630,11 @@ function pdfBytes(rows, title, dates, count) {
   return Uint8Array.from(file, (ch) => ch.charCodeAt(0))
 }
 
-export function downloadPdf(rows, { title, dates = {} } = {}) {
-  const wanted = check(rows)
-  const bytes = pdfBytes(wanted, title || 'testimonies', dates, wanted.length)
-  return { name: save(bytes, fileName(title, dates, 'pdf'), PDF), count: wanted.length }
+export function downloadPdf(rows, options = {}) {
+  const wanted = check(rows, options)
+  const columns = columnsOf(options)
+  const bytes = pdfBytes(wanted, columns, { ...options, title: options.title || 'Export' })
+  return { name: save(bytes, fileName(options.title, options.dates, 'pdf'), PDF), count: wanted.length }
 }
+
+export { moment, pretty }

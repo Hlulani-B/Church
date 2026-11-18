@@ -440,15 +440,10 @@ export default function AdminDashboard() {
         <h1 className="serif">{heading.name || "This community"}</h1>
         <p className="sub">{admin.email}</p>
 
-        {/* Attendance comes first: the notice (which carries its own PIN box) and the admin's own
-            control sit above everything else, so the whole picture of the room is the first thing
-            here rather than something below the roster and join code. */}
-        {communityId && <SessionLive community_id={communityId} />}
-        {communityId && <AttendanceControl community_id={communityId} admin />}
-
-        {error && <div className="note bad">{error}</div>}
-        {note && !error && <div className="note">{note}</div>}
-
+        {/* The page-to-page buttons sit above everything else. This is a busy screen — a live
+            check-in card, the admin's own attendance control, the roster, the join code — and
+            needing to scroll past all of that to reach "View testimonies" made the buttons
+            feel like they belonged to a page further down rather than this one. */}
         {communityId && (
           <div className="links">
             <button
@@ -472,12 +467,21 @@ export default function AdminDashboard() {
             </button>
             <button
               type="button"
-              onClick={() => navigate("/admin-feedback")}
+              onClick={() => navigate("/feedback/all")}
             >
               Read feedback
             </button>
           </div>
         )}
+
+        {/* Attendance comes next: the notice (which carries its own PIN box) and the admin's own
+            control sit above the roster and join code, so the whole picture of the room is the
+            first real content here. */}
+        {communityId && <SessionLive community_id={communityId} />}
+        {communityId && <AttendanceControl community_id={communityId} admin />}
+
+        {error && <div className="note bad">{error}</div>}
+        {note && !error && <div className="note">{note}</div>}
 
         {!communityId ? (
           <div className="note">

@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { AdminDashboardFetch } from './admin_dashboard.js'
-import { downloadExcel, downloadPdf } from './testimony_files.js'
+import { downloadExcel, downloadPdf } from './table_files.js'
 
 /*
   Testimonies are read by the browser itself, from the values Vite inlines out of
@@ -225,13 +225,43 @@ export class TestimoniesFetch {
     }))
   }
 
-  // Both halves of one click: read the whole search, then hand it to the writer. The page
-  // holds no rows it did not ask for and builds no file of its own.
+  /*
+    Both halves of one click: read the whole search, then hand it to the writer. The page
+    holds no rows it did not ask for and builds no file of its own.
+
+    The column list lives here rather than in the writers, because the writers now serve more
+    than this table and cannot know what each one's rows look like. Testimony keeps four
+    columns and a wide one for the body; the date is named as one so Excel filters it as a date.
+  */
+  static get COLUMNS() {
+    return [
+      { key: 'name', head: 'Name', sheetWidth: 20, pdfWidth: 82 },
+      { key: 'surname', head: 'Surname', sheetWidth: 20, pdfWidth: 82 },
+      { key: 'date', head: 'Date', kind: 'date', sheetWidth: 12, pdfWidth: 62 },
+      { key: 'body', head: 'Testimony', sheetWidth: 110 },
+    ]
+  }
+
   async exportExcel(community_id, search = {}, title = 'testimonies') {
-    return downloadExcel(await this.exportRows(community_id, search), { title, dates: search })
+    const rows = await this.exportRows(community_id, search)
+    return downloadExcel(rows, {
+      title,
+      dates: search,
+      columns: TestimoniesFetch.COLUMNS,
+      empty: 'No testimonies match this search, so there is nothing to export.',
+      noun: { singular: 'testimony', plural: 'testimonies' },
+    })
   }
 
   async exportPdf(community_id, search = {}, title = 'testimonies') {
-    return downloadPdf(await this.exportRows(community_id, search), { title, dates: search })
+    const rows = await this.exportRows(community_id, search)
+    return downloadPdf(rows, {
+      title,
+      dates: search,
+      columns: TestimoniesFetch.COLUMNS,
+      empty: 'No testimonies match this search, so there is nothing to export.',
+      noun: { singular: 'testimony', plural: 'testimonies' },
+      subject: 'Testimonies',
+    })
   }
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
@@ -23,10 +23,12 @@ const googleProvider = new GoogleAuthProvider();
   this in a fraction of a second, on any browser, without a stylesheet that isn't here.
 
   The page carries two panels: sign-in for the returning member, sign-up for the first-timer who
-  walked in cold. Both hand off to the same check-in path — the moment Firebase reports a signed-in
-  person and the join step has finished, the effect below does the arrival POST exactly once, so a
-  first-timer ends up on the same "Attendance marked" screen as a member who has been coming for
-  years.
+  walked in cold. Both hand off to the same path — once Firebase reports a signed-in person, the
+  scan's four digits first get spent joining them to the fellowship if they are not in it yet, and
+  only then does the arrival POST run, exactly once. Nobody on this page is asked for a join code:
+  the proof that you belong is that you are standing in a room with a check-in open in front of it,
+  which is the same proof the register itself accepts. A first-timer therefore lands on the same
+  "Attendance marked" screen as a member who has been coming for years.
 */
 const css = `
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;1,500&display=swap");
@@ -51,7 +53,7 @@ html,body{margin:0;padding:0;background:#fff;color:#111;font-family:system-ui,-a
 .qr .say.bad{border-left-color:#a11111}
 .qr .exit{margin-top:18px;font-size:14px;color:#666}
 .qr .quiet{margin-top:14px;font-size:13px;color:#666;text-align:center}
-.qr .hint{margin:8px 0 0;font-size:13px;color:#666}
+.qr .note{margin:18px 0 0;padding:12px 14px;border-left:3px solid #111;background:#fafafa;font-size:13px;color:#444}
 `;
 
 // What the QR encodes in the URL: /qr?pin=…&session_id=…&community_id=…
@@ -103,12 +105,10 @@ export default function Qr() {
   const [busy, setBusy] = useState(false);
   const [loginError, setLoginError] = useState("");
 
-  // Sign-up form state — name, surname and the community's 6-character join code, which the
-  // leader shares with anyone walking in cold. The code is what proves they belong to a
-  // fellowship; the QR itself proves nothing about membership.
+  // Sign-up form state. Name and surname are all it asks: the fellowship this person is being
+  // added to comes out of the scan, from the session the four digits name, and never from a box.
   const [name, setName] = useState("");
   const [surname, setSurname] = useState("");
-  const [joinCode, setJoinCode] = useState("");
 
   /*
     The auth listener fires the instant Firebase hands back a signed-in user, which during a
@@ -119,6 +119,15 @@ export default function Qr() {
     fire the check-in.
   */
   const [pending, setPending] = useState(false);
+
+  /*
+    One scan, one arrival — guarded by a ref rather than by `state` alone, because a handler and
+    the effect above can otherwise reach `doCheckIn` in the same second: sign-up runs its own
+    sequence while the listener has already reported the new person, and a pending flag that
+    commits before the check-in starts would let the effect walk in beside it. A ref is set the
+    moment the door is used and cannot be re-read as false by a render that has not happened yet.
+  */
+  const entered = useRef(false);
 
   // Check-in flow: "idle" (nothing yet) → "working" (asking location + POSTing) → "done".
   const [state, setState] = useState("idle");
@@ -135,14 +144,19 @@ export default function Qr() {
     [],
   );
 
-  // Signed in, no signup sequence in flight, and every QR param is here: do the check-in exactly
-  // once. Any further re-render is either the "working" or the "done" state and must not fire
-  // another POST.
+  /*
+    Signed in, and every QR param is here. Reaching this is the one rule the whole page is built
+    around: a person never checks in before the membership has been settled, because the register
+    answers a non-member with a 403 and would send a first-timer to "Not marked" for a step nobody
+    asked them to take. So the effect waits on `pending` — raised by every path that writes to the
+    database below — and each handler calls `enter()` itself the moment its own work is done.
+    `entered` is then what keeps the whole page to one arrival per scan, whoever reaches it first.
+  */
   useEffect(() => {
     if (!settled || !who || pending) return;
     if (state !== "idle") return;
     if (!params.pin || !params.community_id || !params.session_id) return;
-    doCheckIn();
+    enter(who.email);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settled, who, pending, state, params]);
 
@@ -151,7 +165,8 @@ export default function Qr() {
     setBusy(true);
     setLoginError("");
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const done = await signInWithEmailAndPassword(auth, email, password);
+      await enter(done.user?.email);
     } catch (cause) {
       setLoginError(loginMessage(cause));
     } finally {
@@ -163,7 +178,8 @@ export default function Qr() {
     setBusy(true);
     setLoginError("");
     try {
-      await signInWithPopup(auth, googleProvider);
+      const done = await signInWithPopup(auth, googleProvider);
+      await enter(done.user?.email);
     } catch (cause) {
       setLoginError(loginMessage(cause));
     } finally {
@@ -172,41 +188,88 @@ export default function Qr() {
   }
 
   /*
-    A first-timer walking up to the hall with no account. Three writes happen in a fixed order
-    and the whole sequence has to finish before the check-in auto-fires: create the Firebase user,
-    write their row in the users table (the same call /signup makes), then join them to the
-    community using the 6-character code the leader gave them. A failure at step two or three
-    leaves them signed in and returns them to the panel with a specific message — half-way is
-    close enough that we should not discard their session as well.
+    What a scan bought, as far as the database is concerned. The four digits are matched against a
+    check-in that is open right now and the community off that row is where this person is added —
+    no code, because a stranger at the door has nothing to type and the room they are standing in
+    is the better proof anyway. /api/self works out all of it; this passes on what the picture
+    carried and nothing else.
+
+    A member coming back through the same door is refused by that endpoint as "already in", and
+    that answer is a success here: they are where they need to be, and the check-in that follows
+    will say so. Anything else is worth their attention, so it is reported and the arrival is
+    attempted anyway — a phone that cannot reach the server would show the same message twice,
+    which is quieter than a page that seems to hang.
+
+    No address is sent. The endpoint reads it off this browser's own id token, which is what makes
+    it "this phone is being held by somebody who belongs here" rather than a way to enrol anyone.
+  */
+  async function ensureMembership() {
+    try {
+      await callGod("community", {
+        function: "join_at_session",
+        community_id: params.community_id,
+        session_id: params.session_id,
+        pin: params.pin,
+      });
+    } catch (cause) {
+      if (String(cause?.message || '').toLowerCase().includes('already in')) return;
+      setLoginError(cause?.message || "You could not be added to this fellowship.");
+    }
+  }
+
+  // The single way onto the arrival: membership first, then the check-in, with `pending` held up
+  // across both so the effect cannot slip between them. Claimed once, and only once, per scan.
+  // `email` is the address the scan was made under, and it is only a signal here: no address, no
+  // membership step, which is how a browser whose listener has not reported one yet stays honest.
+  async function enter(email) {
+    if (entered.current) return;
+    entered.current = true;
+    setPending(true);
+    try {
+      if (email) await ensureMembership();
+      await doCheckIn();
+    } finally {
+      setPending(false);
+    }
+  }
+
+  /*
+    A first-timer walking up to the hall with no account. Two writes happen here in a fixed order
+    — create the Firebase user, then their row in the `users` table, the same call /signup makes —
+    and both have to finish before `enter()` spends the scan on the membership and the arrival. A
+    failure leaves them signed in and back on a panel with a specific message: half-way is close
+    enough that we should not discard their session as well.
   */
   async function signUpAndJoin(event) {
     event.preventDefault();
     setBusy(true);
     setLoginError("");
     setPending(true);
+    let created = null;
     try {
-      const created = await createUserWithEmailAndPassword(auth, email, password);
+      created = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(created.user, { displayName: `${name} ${surname}`.trim() });
       // Firebase reports the new user immediately, which would otherwise fire the check-in effect
       // before the users row and community link exist. The pending flag above holds it off.
       await users.create({ email: created.user.email, name, surname });
-      await callGod("community", { function: "join", join_id: joinCode });
-      // On success, the caller stays signed in and pending=false lets the effect run the check-in.
       setPending(false);
     } catch (cause) {
-      // A user row that already existed for this address, or a code that matched no community:
-      // the person is signed in but not a member. Release the pending guard so the check-in
-      // effect fires — the server will refuse it with a clear message rather than leave them
-      // staring at a spinner — but show what went wrong on this side first.
+      // The account exists and the person is signed in even though a step failed, so releasing the
+      // guard here lets the arrival run and answer honestly instead of leaving them staring at a
+      // spinner. Whatever went wrong is shown on this panel first.
       setPending(false);
       setLoginError(signupMessage(cause));
-      // The user is signed in, so the panel below naturally swaps to the check-in flow. If the
-      // join failed, force them back to the sign-in panel with the message so they can retry
-      // the join from /community rather than loop here.
+      // They are signed in, so the page would otherwise swap to the check-in flow on its own.
+      // Putting them back on the sign-in panel keeps the message where they can act on it — a
+      // duplicated address, say, which is solved by signing in rather than by trying again.
       setPanel("signin");
     } finally {
       setBusy(false);
     }
+    // Only an account that this form actually opened gets the membership step. A password Firebase
+    // refused or an address already in use belongs to somebody who may not be here at all, and
+    // spending this scan on it would add a stranger to the fellowship.
+    if (created) await enter(created.user.email);
   }
 
   function signupMessage(error) {
@@ -297,6 +360,13 @@ export default function Qr() {
             <button className="ghost" type="button" onClick={signInWithGoogle} disabled={busy}>
               Continue with Google
             </button>
+            {/* Sign-in used to be the plain path and the join code the awkward one. Now one scan
+                settles both, so a member who was ever removed from this fellowship walks back in
+                through the same door as everybody else instead of hunting for a code. */}
+            <p className="note">
+              This scan also puts you back on the community's register if you are not on it any
+              more — no join code needed.
+            </p>
             {loginError && <p className="err">{loginError}</p>}
             <button
               className="link"
@@ -315,8 +385,8 @@ export default function Qr() {
           <>
             <h1 className="serif">Join us and mark yourself present</h1>
             <p className="lede">
-              Two minutes to set up. You will need the six-character join code for this
-              fellowship — ask the leader who is taking attendance.
+              Two minutes, and nothing to ask anyone for. The code you just scanned is what signs
+              you in to this fellowship — a name, a surname, and a password are all that is left.
             </p>
             <form onSubmit={signUpAndJoin}>
               <div className="row2">
@@ -372,27 +442,17 @@ export default function Qr() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
               />
-              <label className="label" htmlFor="qr-join-code">
-                Join code
-              </label>
-              <input
-                id="qr-join-code"
-                className="field"
-                type="text"
-                autoComplete="off"
-                autoCapitalize="characters"
-                spellCheck={false}
-                maxLength={6}
-                value={joinCode}
-                onChange={(event) => setJoinCode(event.target.value)}
-              />
-              <p className="hint">
-                Six letters and numbers, e.g. <span className="serif">K3M9QT</span>. Only your
-                leader has it.
+              {/* Deliberately not a box any more. Asking a stranger at the door for a code the
+                  leader keeps on another screen was the part of this flow that could actually
+                  stall, and the scan already proves more: those four digits only answer while
+                  the gathering's check-in is open. */}
+              <p className="note">
+                Your account will be added to this fellowship as a member, and you will be marked
+                present — both from the code you scanned, so there is nothing else to type.
               </p>
               <button
                 type="submit"
-                disabled={busy || !name || !surname || !email || password.length < 6 || joinCode.length < 4}
+                disabled={busy || !name || !surname || !email || password.length < 6}
               >
                 {busy ? "Creating your account…" : "Create account and check in"}
               </button>
@@ -434,15 +494,15 @@ export default function Qr() {
         )}
 
         {who && !missing && state === "idle" && (
-          <p className="lede">Preparing to mark you present…</p>
+          <p className="lede">Checking that you are on this fellowship's register…</p>
         )}
 
         {who && !missing && state === "working" && (
           <>
             <h1 className="serif">Marking you present…</h1>
             <p className="lede">
-              Reading this device's location and matching the four digits against the open
-              session.
+              Adding you to the fellowship if this scan has not already done so, reading this
+              device's location, and matching the four digits against the open session.
             </p>
           </>
         )}

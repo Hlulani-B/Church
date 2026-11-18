@@ -1,11 +1,23 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
 import { UserFetch } from "../page_functions/user.js";
+import { CommunityFetch } from "../page_functions/community.js";
 import Menu from "../components/menu.jsx";
 import BackToCommunities from "../components/back.jsx";
 
 const accounts = new Auth();
 const users = new UserFetch();
+const groups = new CommunityFetch();
+
+// Which dashboard each community_members role opens. The /community page navigates by
+// asking the server for the caller's role in that community; here the role is already
+// on the row `memberOf` returned, so a click does not need a round trip first.
+const DASHBOARDS = {
+  admin: "/admin-dashboard",
+  leader: "/leader-dashboard",
+  member: "/member-dashboard",
+};
 
 const css = `
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;1,500&display=swap");
@@ -27,6 +39,9 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au p{color:#333;margin:0 0 12px}
 .au .sub{color:var(--muted)}
 
+.au h2{font-family:"Playfair Display",Georgia,serif;font-weight:500;font-size:22px;margin:56px 0 6px;padding-top:28px;border-top:1px solid var(--line)}
+.au h2 + p{color:var(--muted);font-size:14px;margin:0 0 20px}
+
 .au .field{margin:28px 0 16px}
 .au label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
 .au input[type="text"]{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:2px;font-size:15px;font-family:inherit;background:#fff;color:var(--text)}
@@ -36,12 +51,24 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 
 .au .btn{width:100%;padding:13px 16px;border-radius:2px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;background:#111;color:#fff;border:1px solid #111}
 .au .btn:disabled{opacity:.55;cursor:not-allowed}
+.au .btn.ghost{background:#fff;color:#111}
 .au .error,.au .saved{border-left:3px solid #111;padding:10px 14px;font-size:14px;margin:20px 0 0}
 .au .saved{background:#f4f4f4}
 .au .error{background:#f4f4f4;border-left-color:#111}
+
+.au .communities{display:flex;flex-direction:column;gap:10px;margin:20px 0 0}
+.au .community{display:flex;align-items:baseline;justify-content:space-between;gap:14px;width:100%;text-align:left;padding:14px 18px;border:1px solid var(--line);border-radius:2px;background:#fff;cursor:pointer;font:inherit;color:inherit}
+.au .community:hover{border-color:#111}
+.au .community .n{font-weight:600}
+.au .community .r{font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 10px;white-space:nowrap}
+.au .empty{border:1px dashed var(--line);border-radius:2px;padding:16px 18px;font-size:14px;color:var(--muted);margin:20px 0 0}
+
+.au .row{display:flex;gap:10px;margin:14px 0 0}
+.au .row .btn{width:auto;flex:1}
 `;
 
 export default function ProfilePage() {
+  const navigate = useNavigate();
   const [signedIn, setSignedIn] = useState(null);
   const [noSession, setNoSession] = useState(false);
   const [member, setMember] = useState(null);
@@ -50,6 +77,13 @@ export default function ProfilePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+
+  const [communities, setCommunities] = useState([]);
+  const [communitiesLoaded, setCommunitiesLoaded] = useState(false);
+
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetSent, setResetSent] = useState("");
+  const [resetError, setResetError] = useState("");
 
   useEffect(() => {
     return accounts.onChange((user) => {
@@ -70,6 +104,15 @@ export default function ProfilePage() {
           }
         })
         .catch((fetchError) => setError(fetchError.message));
+      groups
+        .getCommunities()
+        .then((rows) => setCommunities(Array.isArray(rows) ? rows : []))
+        .catch(() => {
+          /* A failed read here is about the sidebar below, not about the person's name.
+             The list just says "could not read" instead of pretending there are none. */
+          setCommunities(null);
+        })
+        .finally(() => setCommunitiesLoaded(true));
     });
   }, []);
 
@@ -90,6 +133,28 @@ export default function ProfilePage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function sendReset() {
+    setResetBusy(true);
+    setResetSent("");
+    setResetError("");
+    try {
+      const to = await accounts.resetPassword();
+      setResetSent(to);
+    } catch (err) {
+      setResetError(err?.message || "The reset email could not be sent.");
+    } finally {
+      setResetBusy(false);
+    }
+  }
+
+  function openCommunity(one) {
+    const to = DASHBOARDS[one.role];
+    if (!to) return;
+    navigate(to, {
+      state: { community_id: one.community_id, name: one.name, email: signedIn.email },
+    });
   }
 
   if (!signedIn) {
@@ -171,6 +236,66 @@ export default function ProfilePage() {
             {saved && <div className="saved">Saved.</div>}
           </form>
         )}
+
+        {/*
+          Two things a signed-in person actually comes here for, once they have changed
+          their name: getting a reset link because they have since forgotten the password
+          again, and moving between the fellowships they belong to. Both used to mean
+          signing out and starting over from /login or /community.
+        */}
+        <h2 className="serif">Password</h2>
+        <p>Sends a reset link to {signedIn.email}. Nothing changes until you use it.</p>
+        <button className="btn ghost" type="button" onClick={sendReset} disabled={resetBusy}>
+          {resetBusy ? "Sending…" : "Send me a reset link"}
+        </button>
+        {resetSent && <div className="saved">Check {resetSent} for the message.</div>}
+        {resetError && <div className="error">{resetError}</div>}
+
+        <h2 className="serif">Your communities</h2>
+        <p>
+          Every fellowship this address belongs to. A click opens whichever dashboard your role
+          in that community is the one for.
+        </p>
+
+        {!communitiesLoaded && <p className="sub">Reading…</p>}
+        {communitiesLoaded && communities === null && (
+          <div className="empty">
+            The list did not come back. It will be there again the next time this page loads;
+            in the meantime <a href="/community">/community</a> is the same set of cards.
+          </div>
+        )}
+        {communitiesLoaded && Array.isArray(communities) && communities.length === 0 && (
+          <div className="empty">
+            Not in a community yet. <a href="/community">Join by code or start one</a> and
+            it will be listed here.
+          </div>
+        )}
+        {communitiesLoaded && Array.isArray(communities) && communities.length > 0 && (
+          <div className="communities">
+            {communities.map((one) => (
+              <button
+                key={one.community_id}
+                type="button"
+                className="community"
+                onClick={() => openCommunity(one)}
+              >
+                <span className="n">{one.name || "This community"}</span>
+                <span className="r">{one.role || "member"}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <h2 className="serif">Anything to say about the app?</h2>
+        <p>
+          Five short questions, signed with the address you signed in with and stored that way —
+          never printed next to your words. It goes to whoever runs Kopano, not to your fellowship.
+        </p>
+        <div className="row">
+          <button className="btn" type="button" onClick={() => navigate("/feedback")}>
+            Open feedback
+          </button>
+        </div>
       </article>
     </div>
   );

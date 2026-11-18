@@ -19,7 +19,7 @@ browser. The tests exercise pure functions and classes that talk to a chainable 
 
 | File | Locks down |
 | --- | --- |
-| `pure-helpers.test.js` | `distanceInMetres` (haversine), `generatePin`, and reading the tier map off `lib/god.js` |
+| `pure-helpers.test.js` | `distanceInMetres` (haversine), `generatePin`, `pickOpenSession` (the window rule both the check-in and a scanned join go through), and `reading` for a device's coordinates |
 | `session-live.test.js` | `Session.live(...)`: the `cancel` null-tolerance, the window filter, the already-marked pass, PIN exclusion, `near_required`, and the `leader_name` join |
 | `session-create.test.js` | `Session.create(...)`: the overlap guard, its `cancel` filter, and the two different refusal messages for own-blocker vs. someone-else's |
 

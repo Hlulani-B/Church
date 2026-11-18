@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { SessionFetch } from "../page_functions/session.js";
 import { clock } from "../page_functions/place.js";
+import QrCard from "./qr_code.jsx";
 
 const sessions = new SessionFetch();
 
@@ -153,6 +154,17 @@ function ManageCard({ one, admin, communityId, onChanged }) {
           <span className="lbl">PIN to read out</span>
           {one.pin}
         </p>
+      )}
+
+      {/*
+        The digits, once more as a code. Whoever the PIN reached (the one who opened it, or an
+        admin) gets the matching QR here too, so the room can scan instead of type without leaving
+        the dashboard. It carries the same three ids the /qr page reads, and it stays hidden for a
+        plain leader looking at somebody else's gathering — they never saw the PIN, so a code built
+        from it would only be a way around that.
+      */}
+      {one.pin && one.session_id && (
+        <QrCard community_id={communityId} session_id={one.session_id} pin={one.pin} />
       )}
 
       {showControls && status !== "cancelled" && (

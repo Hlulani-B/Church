@@ -6,6 +6,7 @@ import { NO_PLACE, clock, readPosition } from "../page_functions/place.js";
 import { adminState } from "../admin/state.js";
 import Menu from "../components/menu.jsx";
 import BackToCommunities from "../components/back.jsx";
+import QrCard from "../components/qr_code.jsx";
 
 const accounts = new Auth();
 const sessions = new SessionFetch();
@@ -270,7 +271,7 @@ export default function TakeAttendancePage() {
           <>
             <p className="eyebrow">Session opened</p>
             <h1 className="serif">
-              Read these <em>four digits</em> out.
+              Read these <em>four digits</em> out, or show the code.
             </h1>
             <div className="pin" style={{ marginTop: 24 }}>
               <span className="digits">{open.pin}</span>
@@ -283,10 +284,20 @@ export default function TakeAttendancePage() {
                 : `within ${open.radius} m of where you are standing`}.
               You are already written down as attending it.
             </p>
+
+            {/*
+              The same four digits, offered a second way: a code the room scans instead of typing.
+              It carries the community, the session and the PIN to the /qr page, which marks the
+              scan exactly as a typed PIN would. The digits stay above it as the fallback.
+            */}
+            <QrCard community_id={communityId} session_id={open.session_id} pin={open.pin} />
+
             <p className="fine">
-              The room enters these digits on their dashboards. This page keeps them here as long as
-              you want to read them a second time; when the room has them, go back.
+              The room enters these digits on their dashboards, or scans the code above. This page
+              keeps them here as long as you want to read them a second time; when the room has
+              them, go back.
             </p>
+
             <div className="row">
               <button className="btn" type="button" onClick={() => navigate(-1)}>
                 Back to dashboard

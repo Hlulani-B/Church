@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
   updateProfile,
   signInWithPopup,
   sendEmailVerification,
@@ -141,7 +142,16 @@ export default function SignupPage() {
     }
     setBusy(true);
     try {
-      const result = await createUserWithEmailAndPassword(auth, email, password);
+      let result
+      try {
+        result = await createUserWithEmailAndPassword(auth, email, password)
+      } catch (err) {
+        // Whether this is an account is the users table's answer, not Firebase's: an address
+        // already in auth but never completed belongs to somebody who has to finish creating
+        // the account, so the typed password signs them in and the users row gets written now.
+        if (err.code !== "auth/email-already-in-use") throw err
+        result = await signInWithEmailAndPassword(auth, email, password)
+      }
       await updateProfile(result.user, { displayName: `${name} ${surname}`.trim() });
       localStorage.setItem(EMAIL_KEY, result.user.email);
       await saveUserDetails(name, surname, result.user.email);
@@ -152,6 +162,11 @@ export default function SignupPage() {
         navigate("/login", {
           state: { notice: "A user with this email already exists, so log in instead." },
         });
+        return;
+      }
+      if (err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
+        setError("Your email or password is incorrect.");
+        setBusy(false);
         return;
       }
       setError(friendlyError(err));

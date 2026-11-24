@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { AdminDashboardFetch } from './admin_dashboard.js'
 import { downloadExcel, downloadPdf } from './table_files.js'
+import { decryptText, encryptText } from './crypto.js'
+import { prepareTestimonyFile, uploadTestimonyFile } from './testimony_files.js'
 
 /*
   Testimonies are read by the browser itself, from the values Vite inlines out of
@@ -61,7 +63,7 @@ function emailsNamed(known, name) {
 function asked(client, community_id, wanted, options) {
   let query = client
     .from('testimony')
-    .select('testimony_id, user_email, date, body', options)
+    .select('testimony_id, user_email, date, body, authorise, allow_all', options)
     .eq('community_id', community_id)
     .order('date', { ascending: false })
     .order('testimony_id')
@@ -75,7 +77,7 @@ function asked(client, community_id, wanted, options) {
   A row and whoever shared it. Somebody no longer on the roster keeps an empty name, which is
   how the page knows to title the row by their address instead.
 */
-function shape({ testimony_id, user_email, date, body }, known) {
+function shape({ testimony_id, user_email, date, body, authorise, allow_all }, known) {
   const who = known?.get(user_email)
   return {
     testimony_id,
@@ -84,7 +86,38 @@ function shape({ testimony_id, user_email, date, body }, known) {
     surname: who?.surname || '',
     date,
     body,
+    authorise,
+    allow_all,
   }
+}
+
+/*
+  The rows of one read, opened for the screen. addTestimony stores the author's address as
+  ciphertext, so reading cannot answer a roster, a search or a permission check on it until it is
+  decrypted — which decryptText does here, once per row, and passes through untouched any address
+  written before the encryption existed. The body is not opened here: the pages render it through
+  their own TestimonyBody, which decrypts the words and shows a file link for the types that are
+  one — so the stored row stays ciphertext all the way down to Supabase, and only this screen's
+  copy of it is in plain words.
+*/
+async function openRows(rows, known, viewer_email) {
+  const opened = await Promise.all(
+    rows.map(async (row) => shape({ ...row, user_email: await decryptText(row.user_email) }, known)),
+  )
+  return opened.filter((one) => canRead(one, viewer_email))
+}
+
+/*
+  Whether a testimony may be read, on the two columns addTestimony sets. allow_all is the switch:
+  true opens it to anybody and leaves authorise empty; false narrows reading to the addresses held
+  in the authorise array. A row that never set allow_all (written before these columns existed) is
+  left readable rather than hidden.
+*/
+function canRead(row, viewer_email) {
+  if (row.allow_all !== false) return true
+  const list = Array.isArray(row.authorise) ? row.authorise : []
+  const viewer = String(viewer_email || '').toLowerCase()
+  return list.some((one) => String(one).toLowerCase() === viewer)
 }
 
 // One Supabase client for the whole page. Auth lives in Firebase now, so this browser
@@ -142,21 +175,32 @@ export class TestimoniesFetch {
     community, which is what the page opens on. `matched` is how many people a name search
     picked out: zero of them is a different sentence from nobody sharing anything.
   */
-  async getTestimonies(community_id, offset = 0, search = {}) {
+  async getTestimonies(community_id, offset = 0, search = {}, viewer_email = '') {
     if (!community_id) throw new Error('community_id is required')
     const wanted = await this.#askedFor(community_id, search)
     const start = Number(offset) || 0
-    const { data, error, count } = await asked(this.client, community_id, wanted, {
-      count: 'exact',
-    })
-      .range(start, start + PAGE - 1)
-    if (error) throw new Error(error.message)
+    // authorise is per-row, so the readable set has to be formed before the page is taken; a
+    // server-side range would page over rows this viewer cannot see and miscount the total.
+    const matched = []
+    let serverCount = null
+    for (let page = 0; page < PAGES; page += 1) {
+      const { data, error, count } = await asked(this.client, community_id, wanted, {
+        count: 'exact',
+      }).range(page * PAGE, page * PAGE + PAGE - 1)
+      if (error) throw new Error(error.message)
+      matched.push(...data)
+      serverCount = count ?? matched.length
+      if (!data.length || matched.length >= serverCount) break
+    }
+    const readable = await openRows(matched, wanted.known, viewer_email)
+    const shown = readable.slice(start, start + PAGE)
     return {
-      total: count ?? data.length,
+      total: readable.length,
       from: start,
-      shown: data.length,
+      // What the three testimony pages read: the rows of this page, and how many they are.
+      testimonies: shown,
+      shown: shown.length,
       matched: wanted.emails?.length ?? null,
-      testimonies: data.map((row) => shape(row, wanted.known)),
     }
   }
 
@@ -166,47 +210,121 @@ export class TestimoniesFetch {
     that came back with the first page is what the walk has to reach, and a read that ends short
     of it is said out loud rather than handed over as the whole set.
   */
-  async allTestimonies(community_id, search = {}) {
+  async allTestimonies(community_id, search = {}, viewer_email = '') {
     if (!community_id) throw new Error('community_id is required')
     const wanted = await this.#askedFor(community_id, search)
     const rows = []
     let total = null
+    let fetched = 0
     for (let page = 0; page < PAGES; page += 1) {
       const { data, error, count } = await asked(this.client, community_id, wanted, {
         count: 'exact',
       }).range(page * PAGE, page * PAGE + PAGE - 1)
       if (error) throw new Error(error.message)
-      rows.push(...data.map((row) => shape(row, wanted.known)))
-      total = count ?? rows.length
-      if (!data.length || rows.length >= total) break
+      fetched += data.length
+      rows.push(...(await openRows(data, wanted.known, viewer_email)))
+      total = count ?? fetched
+      if (!data.length || fetched >= total) break
     }
-    if (rows.length < total) {
+    if (fetched < total) {
       throw new Error(
-        `Only ${rows.length} of ${total} testimonies could be read. Narrow the search and try again.`,
+        `Only ${fetched} of ${total} testimonies could be read. Narrow the search and try again.`,
       )
     }
-    return { total, testimonies: rows }
+    return { total: rows.length, testimonies: rows }
   }
 
   /*
-    Recording a testimony by hand, which is what the add button on the page does. The address
-    and the community come from the caller rather than from the form, because the popup asks
-    for two things only — the day and the words — and neither of those belongs to whoever is
-    typing. The day is stored exactly as the search above it compares it.
+    Recording a testimony, in whichever form the author brings it — the words, or a file. This
+    carries the logic asked for, applied directly here in addTestimony.
+
+      - type 'text' (the default): the words are encrypted and that ciphertext is what lands in body.
+      - type 'image' | 'pdf' | 'docx': the file runs through the lossless, never-rejecting
+        compression helper, uploads to the kopano bucket, and its public URL lands in body.
+
+    The author's own address is encrypted too and stored in user_email. Who may read it is the
+    author's choice on two columns: allow_all true opens it to everybody and leaves authorise
+    empty; allow_all false fills authorise with the addresses that are allowed, and reading is then
+    narrowed to those. For the insert to land the table needs `type`, `authorise` and `allow_all`
+    columns and the user_email -> users(email) foreign key dropped.
   */
-  async addTestimony({ community_id, email, date, body }) {
+  async addTestimony({
+    community_id,
+    email,
+    date,
+    body,
+    testimony,
+    type = 'text',
+    file,
+    allow_all,
+    authorise,
+  }) {
     if (!community_id) throw new Error('community_id is required')
-    if (!email) throw new Error('Nobody is signed in, so there is nothing to record an address against.')
+    if (!email) {
+      throw new Error('Nobody is signed in, so there is nothing to record an address against.')
+    }
     if (!day(date)) throw new Error('Pick the day this testimony belongs to.')
-    const words = String(body ?? '').trim()
-    if (!words) throw new Error('A testimony needs some words before it can be saved.')
+
+    const kind = String(type || '').trim().toLowerCase()
+    let stored
+    if (kind === 'text') {
+      const words = String(body ?? testimony ?? '').trim()
+      if (!words) throw new Error('A testimony needs some words before it can be saved.')
+      stored = await encryptText(words)
+    } else if (kind === 'image' || kind === 'pdf' || kind === 'docx') {
+      const prepared = await prepareTestimonyFile(file)
+      stored = await uploadTestimonyFile(this.client, prepared.blob, {
+        kind: prepared.kind,
+        ownerEmail: email,
+        date,
+      })
+    } else {
+      throw new Error('A testimony is one of text, image, pdf or docx.')
+    }
+
+    const encryptedEmail = await encryptText(email)
+
+    // allow_all true means authorise is empty; false means only the listed addresses may read.
+    const everyone = allow_all === true || String(allow_all).toLowerCase() === 'true'
+    const authorised = everyone ? [] : Array.isArray(authorise) ? authorise : []
+
     const { data, error } = await this.client
       .from('testimony')
-      .insert({ community_id, user_email: email, date, body: words })
+      .insert({
+        community_id,
+        user_email: encryptedEmail,
+        date,
+        body: stored,
+        type: kind,
+        allow_all: everyone,
+        authorise: authorised,
+      })
       .select('testimony_id, user_email, date, body')
     if (error) throw new Error(error.message)
-    if (!data?.length) throw new Error('The testimony did not come back, so it may not have been written.')
+    if (!data?.length) {
+      throw new Error('The testimony did not come back, so it may not have been written.')
+    }
     return shape(data[0])
+  }
+
+  /*
+    Changing who may see a testimony, on the same two fields addTestimony sets. allow_all true
+    empties authorise and opens the row to everybody; allow_all false stores the given authorise
+    list and narrows reading to those addresses. The row is addressed by testimony_id.
+  */
+  async updateAuthorise({ testimony_id, allow_all, authorise }) {
+    if (!testimony_id) throw new Error('testimony_id is required')
+    const everyone = allow_all === true || String(allow_all).toLowerCase() === 'true'
+    const authorised = everyone ? [] : Array.isArray(authorise) ? authorise : []
+    const { data, error } = await this.client
+      .from('testimony')
+      .update({ allow_all: everyone, authorise: authorised })
+      .eq('testimony_id', testimony_id)
+      .select('testimony_id, allow_all, authorise')
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    if (!data) throw new Error('That testimony could not be found, so its readers were not changed.')
+    return data
   }
 
   /*
@@ -215,8 +333,8 @@ export class TestimoniesFetch {
     not a substitute for it: an exported file is the kind of thing that leaves a room, so the
     Name and Surname cells stay empty and the row keeps only its date and its body.
   */
-  async exportRows(community_id, search = {}) {
-    const { testimonies } = await this.allTestimonies(community_id, search)
+  async exportRows(community_id, search = {}, viewer_email = '') {
+    const { testimonies } = await this.allTestimonies(community_id, search, viewer_email)
     return testimonies.map((one) => ({
       name: one.name || '',
       surname: one.surname || '',
@@ -242,8 +360,8 @@ export class TestimoniesFetch {
     ]
   }
 
-  async exportExcel(community_id, search = {}, title = 'testimonies') {
-    const rows = await this.exportRows(community_id, search)
+  async exportExcel(community_id, search = {}, title = 'testimonies', viewer_email = '') {
+    const rows = await this.exportRows(community_id, search, viewer_email)
     return downloadExcel(rows, {
       title,
       dates: search,
@@ -253,8 +371,8 @@ export class TestimoniesFetch {
     })
   }
 
-  async exportPdf(community_id, search = {}, title = 'testimonies') {
-    const rows = await this.exportRows(community_id, search)
+  async exportPdf(community_id, search = {}, title = 'testimonies', viewer_email = '') {
+    const rows = await this.exportRows(community_id, search, viewer_email)
     return downloadPdf(rows, {
       title,
       dates: search,

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
 import { TestimoniesFetch } from "../page_functions/testimonies.js";
+import { decryptText } from "../page_functions/crypto.js";
 import LeaderMenu from "./menu.jsx";
 import BackToCommunities from "../components/back.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
@@ -71,7 +72,7 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au .pop h2{font-size:24px;margin:0 0 6px;text-transform:none}
 .au .pop .who{color:var(--muted);font-size:14px;margin:0}
 .au .pop label{display:flex;flex-direction:column;gap:6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:18px 0 0}
-.au .pop input,.au .pop textarea{font:inherit;font-size:16px;letter-spacing:normal;text-transform:none;font-weight:400;color:var(--text);background:#fff;border:1px solid #bdbdbd;border-radius:2px;padding:10px 12px;min-width:0}
+.au .pop input,.au .pop textarea,.au .pop select{font:inherit;font-size:16px;letter-spacing:normal;text-transform:none;font-weight:400;color:var(--text);background:#fff;border:1px solid #bdbdbd;border-radius:2px;padding:10px 12px;min-width:0}
 .au .pop input:focus,.au .pop textarea:focus{outline:none;border-color:#111}
 .au .pop textarea{min-height:160px;resize:vertical;line-height:1.55}
 .au .pop .fail{color:#a11111;font-size:14px;margin:16px 0 0}
@@ -115,6 +116,57 @@ function today() {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+/*
+  How one testimony's body is shown, whatever the author attached. The stored body is now one of
+  three things: encrypted words (an `enc:v1:` string we decrypt here), an uploaded file's public
+  URL (image / pdf / docx), or an old plain-text row. The type is read back off the value itself,
+  so this page does not need the fetch to carry a separate column.
+*/
+function TestimonyBody({ value }) {
+  const [text, setText] = useState(null);
+  const [failed, setFailed] = useState("");
+
+  const encrypted = typeof value === "string" && value.startsWith("enc:v1:");
+  const isUrl = typeof value === "string" && /^https?:\/\//i.test(value);
+  const ext = isUrl ? value.split("?")[0].split(".").pop().toLowerCase() : "";
+
+  useEffect(() => {
+    if (!encrypted) return undefined;
+    let live = true;
+    decryptText(value)
+      .then((plain) => live && setText(plain))
+      .catch((e) => live && setFailed(e.message || "This testimony could not be opened."));
+    return () => {
+      live = false;
+    };
+  }, [value, encrypted]);
+
+  if (isUrl) {
+    if (["png", "jpg", "jpeg", "webp", "gif", "avif"].includes(ext)) {
+      return <img src={value} alt="Testimony image" style={{ maxWidth: "100%", height: "auto" }} />;
+    }
+    const label =
+      ext === "pdf"
+        ? "Open the PDF testimony"
+        : ext === "docx"
+          ? "Download the document"
+          : "Open the attached file";
+    return (
+      <a href={value} target="_blank" rel="noreferrer">
+        {label}
+      </a>
+    );
+  }
+
+  if (encrypted) {
+    if (failed) return <span>{failed}</span>;
+    if (text === null) return <span>Opening…</span>;
+    return <span style={{ whiteSpace: "pre-wrap" }}>{text}</span>;
+  }
+
+  return <span style={{ whiteSpace: "pre-wrap" }}>{value}</span>;
+}
+
 export default function LeaderTestimonies() {
   const navigate = useNavigate();
   const route = useLocation().state;
@@ -137,11 +189,15 @@ export default function LeaderTestimonies() {
     under the search that is on screen rather than only after a reload.
   */
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ date: "", body: "" });
+  const [draft, setDraft] = useState({ date: "", body: "", type: "text", file: null, allow_all: true, authorise: "" });
   const [saving, setSaving] = useState(false);
   const [draftError, setDraftError] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState(setupError);
+  const [editing, setEditing] = useState(null);
+  const [editDraft, setEditDraft] = useState({ allow_all: true, authorise: "" });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
 
   useEffect(() => {
     return accounts.onChange((user) => {
@@ -189,7 +245,7 @@ export default function LeaderTestimonies() {
   useEffect(() => {
     if (!email || !communityId || setupError) return;
     testimonies
-      .getTestimonies(communityId, offset, { from, to, name })
+      .getTestimonies(communityId, offset, { from, to, name }, email)
       .then((result) => {
         setFetched({ ...result, community_id: communityId });
         setError("");
@@ -229,7 +285,7 @@ export default function LeaderTestimonies() {
   }
 
   function openAdd() {
-    setDraft({ date: today(), body: "" });
+    setDraft({ date: today(), body: "", type: "text", file: null, allow_all: true, authorise: "" });
     setDraftError("");
     setAdding(true);
   }
@@ -237,6 +293,45 @@ export default function LeaderTestimonies() {
   function closeAdd() {
     if (saving) return;
     setAdding(false);
+  }
+
+  // Opening "update who can see" on one testimony card.
+  function openEdit(one) {
+    setEditDraft({
+      allow_all: one.allow_all !== false,
+      authorise: (Array.isArray(one.authorise) ? one.authorise : []).join(", "),
+    });
+    setEditError("");
+    setEditing(one);
+  }
+
+  function closeEdit() {
+    if (editSaving) return;
+    setEditing(null);
+  }
+
+  async function saveAuthorise(event) {
+    event.preventDefault();
+    setEditSaving(true);
+    setEditError("");
+    try {
+      const authorise = String(editDraft.authorise || "")
+        .split(",")
+        .map((addr) => addr.trim())
+        .filter(Boolean);
+      await testimonies.updateAuthorise({
+        testimony_id: editing.testimony_id,
+        allow_all: editDraft.allow_all,
+        authorise: editDraft.allow_all ? [] : authorise,
+      });
+      setEditing(null);
+      setNote("Who may read that testimony is updated.");
+      setRefresh((count) => count + 1);
+    } catch (e) {
+      setEditError(e.message);
+    } finally {
+      setEditSaving(false);
+    }
   }
 
   /*
@@ -250,11 +345,19 @@ export default function LeaderTestimonies() {
     setSaving(true);
     setDraftError("");
     try {
+      const authorise = String(draft.authorise || "")
+        .split(",")
+        .map((addr) => addr.trim())
+        .filter(Boolean);
       const one = await testimonies.addTestimony({
         community_id: communityId,
         email,
         date: draft.date,
+        type: draft.type,
         body: draft.body,
+        file: draft.file,
+        allow_all: draft.allow_all,
+        authorise: draft.allow_all ? [] : authorise,
       });
       setAdding(false);
       /*
@@ -301,8 +404,8 @@ export default function LeaderTestimonies() {
       const filter = { from, to, name };
       const done =
         kind === "excel"
-          ? await testimonies.exportExcel(communityId, filter, leader.name || "testimonies")
-          : await testimonies.exportPdf(communityId, filter, leader.name || "testimonies");
+          ? await testimonies.exportExcel(communityId, filter, leader.name || "testimonies", email)
+          : await testimonies.exportPdf(communityId, filter, leader.name || "testimonies", email);
       setNote(
         `${done.count} ${done.count === 1 ? "testimony" : "testimonies"} written to ${done.name}.`,
       );
@@ -470,7 +573,12 @@ export default function LeaderTestimonies() {
                       <span className="who">{who}</span>
                       <span>{pretty(one.date)}</span>
                     </div>
-                    <p className="body">{one.body}</p>
+                    <p className="body"><TestimonyBody value={one.body} /></p>
+                    <div className="row">
+                      <button className="ghost" type="button" onClick={() => openEdit(one)}>
+                        Update who can see
+                      </button>
+                    </div>
                   </div>
                 </article>
               );
@@ -538,13 +646,66 @@ export default function LeaderTestimonies() {
             </label>
 
             <label>
-              Testimony
-              <textarea
-                value={draft.body}
-                placeholder="What did God do?"
-                onChange={(event) => setDraft({ ...draft, body: event.target.value })}
-              />
+              Type
+              <select
+                value={draft.type}
+                onChange={(event) => setDraft({ ...draft, type: event.target.value })}
+              >
+                <option value="text">Text</option>
+                <option value="image">Image</option>
+                <option value="pdf">PDF</option>
+                <option value="docx">Docx</option>
+              </select>
             </label>
+
+            {draft.type === "text" ? (
+              <label>
+                Testimony
+                <textarea
+                  value={draft.body}
+                  placeholder="What did God do?"
+                  onChange={(event) => setDraft({ ...draft, body: event.target.value })}
+                />
+              </label>
+            ) : (
+              <label>
+                {draft.type === "image" ? "Image" : draft.type === "pdf" ? "PDF" : "Document"}
+                <input
+                  type="file"
+                  accept={
+                    draft.type === "image"
+                      ? "image/*"
+                      : draft.type === "pdf"
+                        ? "application/pdf"
+                        : ".docx"
+                  }
+                  onChange={(event) => setDraft({ ...draft, file: event.target.files?.[0] || null })}
+                />
+              </label>
+            )}
+
+            <label>
+              Allow everybody to read this?
+              <select
+                value={draft.allow_all ? "yes" : "no"}
+                onChange={(event) => setDraft({ ...draft, allow_all: event.target.value === "yes" })}
+              >
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+
+            {!draft.allow_all && (
+              <label>
+                Authorise (emails, comma-separated)
+                <input
+                  type="text"
+                  value={draft.authorise}
+                  placeholder="someone@example.com, another@example.com"
+                  onChange={(event) => setDraft({ ...draft, authorise: event.target.value })}
+                />
+              </label>
+            )}
 
             {draftError && <p className="fail">{draftError}</p>}
 
@@ -554,6 +715,57 @@ export default function LeaderTestimonies() {
               </button>
               <button className="go" type="submit" disabled={saving}>
                 {saving ? "Saving…" : "Save testimony"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {editing && (
+        <div
+          className="veil"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Update who can read"
+          onClick={closeEdit}
+        >
+          <form className="pop" onSubmit={saveAuthorise} onClick={(event) => event.stopPropagation()}>
+            <h2 className="serif">Update who can read</h2>
+            <p className="who">The testimony from {pretty(editing.date)}.</p>
+
+            <label>
+              Allow everybody to read this?
+              <select
+                value={editDraft.allow_all ? "yes" : "no"}
+                onChange={(event) =>
+                  setEditDraft({ ...editDraft, allow_all: event.target.value === "yes" })
+                }
+              >
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+
+            {!editDraft.allow_all && (
+              <label>
+                Authorised emails (comma-separated)
+                <input
+                  type="text"
+                  value={editDraft.authorise}
+                  placeholder="someone@example.com, another@example.com"
+                  onChange={(event) => setEditDraft({ ...editDraft, authorise: event.target.value })}
+                />
+              </label>
+            )}
+
+            {editError && <p className="fail">{editError}</p>}
+
+            <div className="row">
+              <button className="ghost" type="button" onClick={closeEdit} disabled={editSaving}>
+                Cancel
+              </button>
+              <button className="go" type="submit" disabled={editSaving}>
+                {editSaving ? "Saving…" : "Save readers"}
               </button>
             </div>
           </form>

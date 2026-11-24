@@ -7,7 +7,16 @@
   `cancel.eq.false,cancel.is.null` and the `lte(started_at)`/`gte(ended_at)` window invariants
   that a careless `.eq('cancel', false)` would break.
 */
-export function makeSupabaseMock({ session = [], event = [], users = [], insertReturns = null } = {}) {
+export function makeSupabaseMock({
+  session = [],
+  event = [],
+  users = [],
+  functions = [],
+  function_attending = [],
+  function_paid = [],
+  insertReturns = null,
+  singleAsRow = false,
+} = {}) {
   const calls = []
 
   function builder(table) {
@@ -64,10 +73,30 @@ export function makeSupabaseMock({ session = [], event = [], users = [], insertR
     if (state.delete) {
       return { data: null, error: null }
     }
-    if (table === 'session') return { data: session, error: null }
-    if (table === 'event') return { data: event, error: null }
-    if (table === 'users') return { data: users, error: null }
-    return { data: [], error: null }
+    const rows =
+      table === 'session'
+        ? session
+        : table === 'event'
+          ? event
+          : table === 'users'
+            ? users
+            : table === 'functions'
+              ? functions
+              : table === 'function_attending'
+                ? function_attending
+                : table === 'function_paid'
+                  ? function_paid
+                  : []
+    /*
+      PostgREST hands back one object rather than a one-row array when a read ends in .single() or
+      .maybeSingle(), and a class that reads a row by its id expects that shape. `singleAsRow` gives
+      it; the default is left as this mock has always behaved — handing the whole table back — so the
+      tests written against rows a class iterates over keep reading what they always read.
+    */
+    if (singleAsRow && (state.single || state.maybeSingle)) {
+      return { data: rows[0] ?? null, error: null }
+    }
+    return { data: rows, error: null }
   }
 
   return {
@@ -85,6 +114,16 @@ export function sessionWith(mock) {
   // Import lazily so a test file that only imports helpers does not need env vars set.
   return import('../../src/functions/session.js').then(({ Session }) => {
     const instance = new Session('http://example.invalid', 'fake-key')
+    instance.client = mock
+    return instance
+  })
+}
+
+// The same trick for the functions class, which is built the way Session is and talks to three
+// tables instead of one.
+export function churchFunctionWith(mock) {
+  return import('../../src/functions/church_functions.js').then(({ ChurchFunctions }) => {
+    const instance = new ChurchFunctions('http://example.invalid', 'fake-key')
     instance.client = mock
     return instance
   })

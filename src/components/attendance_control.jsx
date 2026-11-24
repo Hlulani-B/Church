@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { SessionFetch } from "../page_functions/session.js";
 import { clock } from "../page_functions/place.js";
 import QrCard from "./qr_code.jsx";
+import { pushToast } from "./toast.jsx";
 
 const sessions = new SessionFetch();
 
@@ -84,7 +85,7 @@ const css = `
 .ac .note.bad{border-left-color:#a11111;background:#fbeaea;color:#7a1010}
 `;
 
-function ManageCard({ one, admin, communityId, onChanged }) {
+function ManageCard({ one, admin, communityId, onChanged, onCancelled }) {
   const status = statusOf(one);
   const canManage = (one.mine || admin) && status !== "cancelled" && status !== "ended";
   const showControls = canManage && (one.mine || admin);
@@ -100,15 +101,29 @@ function ManageCard({ one, admin, communityId, onChanged }) {
     try {
       if (kind === "cancel") {
         await sessions.reviseSession({ community_id: communityId, session_id: one.session_id, cancel: true });
-      } else {
-        const metres = radius.trim() === "" ? null : Number(radius);
-        if (metres !== null && (!Number.isFinite(metres) || metres <= 0 || metres > 20000)) {
-          setMessage({ bad: true, text: "A radius is a distance in metres, from 1 to 20000 — or leave it blank for no limit." });
-          setBusy(false);
-          return;
-        }
-        await sessions.reviseSession({ community_id: communityId, session_id: one.session_id, radius: metres });
+        /*
+          Called off is called off: the card leaves now rather than on the next poll. `manage` no
+          longer answers with a cancelled row, so the refresh underneath would drop it a moment later
+          anyway, but waiting on the network to find out that the thing you just did worked is how a
+          screen looks broken. Removing it here also covers the case the poll cannot: a second
+          dashboard pressing cancel on the same row.
+        */
+        onCancelled(one.session_id);
+        pushToast({
+          title: "Check-in cancelled",
+          detail: `${one.event_name || "This gathering"} · no further check-ins`,
+          delay: 2000,
+          life: 6000,
+        });
+        return;
       }
+      const metres = radius.trim() === "" ? null : Number(radius);
+      if (metres !== null && (!Number.isFinite(metres) || metres <= 0 || metres > 20000)) {
+        setMessage({ bad: true, text: "A radius is a distance in metres, from 1 to 20000 — or leave it blank for no limit." });
+        setBusy(false);
+        return;
+      }
+      await sessions.reviseSession({ community_id: communityId, session_id: one.session_id, radius: metres });
       await onChanged();
     } catch (cause) {
       setMessage({ bad: true, text: cause.message });
@@ -117,9 +132,15 @@ function ManageCard({ one, admin, communityId, onChanged }) {
     }
   }
 
+  // A cancelled session shows nothing to anybody — not its opener, not an admin, not a leader
+  // watching somebody else's gathering. It has no PIN to read out and no arrivals to take, and the
+  // row still carries both the digits and the QR built from them, which is a secret with no room
+  // left to say it in. `manage` drops these rows server-side; this is the same rule held to the
+  // screen so a list that was already in flight cannot put the card back.
+  if (status === "cancelled") return null;
+
   // A plain leader, looking at somebody else's gathering, with nothing to manage on it.
   if (!one.mine && !admin) {
-    if (status === "cancelled") return null;
     return (
       <div className="card them">
         <p className="head">
@@ -129,16 +150,16 @@ function ManageCard({ one, admin, communityId, onChanged }) {
         <p className="who">
           {status === "open"
             ? `Attendance is being taken — ${clock(one.started_at)} to ${clock(one.ended_at)}, ${reach(one)}.`
-            : status === "upcoming"
-              ? `Scheduled for ${day(one.started_at)}, ${clock(one.started_at)} to ${clock(one.ended_at)}.`
-              : `Called off by ${one.created_by}.`}
+            : status === "ended"
+              ? `Attendance closed at ${clock(one.ended_at)}.`
+              : `Scheduled for ${day(one.started_at)}, ${clock(one.started_at)} to ${clock(one.ended_at)}.`}
         </p>
       </div>
     );
   }
 
   return (
-    <div className={`card${status === "cancelled" ? " cancelled" : ""}`}>
+    <div className="card">
       <p className="head">
         <span className="what">{one.event_name || "A gathering"}</span>
         <span className={`tag ${status}`}>{tag}</span>
@@ -249,6 +270,7 @@ export default function AttendanceControl({ community_id, admin = false }) {
           admin={admin}
           communityId={community_id}
           onChanged={refresh}
+          onCancelled={(session_id) => setRows((before) => before.filter((row) => row.session_id !== session_id))}
         />
       ))}
     </section>

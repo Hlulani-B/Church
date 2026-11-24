@@ -43,4 +43,22 @@ export class AttendanceFetch {
       reason,
     })
   }
+
+  /*
+    The same notice, for whichever person the For-who box names — the move the admin and leader
+    attendance pages make, and the reason it is a different call: recording for somebody else
+    travels to /api/leader, which settles that the caller leads this community, that the named
+    address belongs to it, and that no present row is being talked back into an absent one. The
+    server forces the answer to not attending and keeps the caller's own address as recorded_by;
+    the gathering is still the one the leader opened a session for on that day.
+  */
+  async recordAbsenceFor({ community_id, event_date, reason, user_email }) {
+    return callGod('event', {
+      function: 'record_for',
+      community_id,
+      event_date,
+      reason,
+      user_email,
+    })
+  }
 }

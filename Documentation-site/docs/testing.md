@@ -22,6 +22,8 @@ browser. The tests exercise pure functions and classes that talk to a chainable 
 | `pure-helpers.test.js` | `distanceInMetres` (haversine), `generatePin`, `pickOpenSession` (the window rule both the check-in and a scanned join go through), and `reading` for a device's coordinates |
 | `session-live.test.js` | `Session.live(...)`: the `cancel` null-tolerance, the window filter, the already-marked pass, PIN exclusion, `near_required`, and the `leader_name` join |
 | `session-create.test.js` | `Session.create(...)`: the overlap guard, its `cancel` filter, and the two different refusal messages for own-blocker vs. someone-else's |
+| `session-manage.test.js` | `Session.manage(...)`: the `cancel` null-tolerance that keeps a called-off session off the leader/admin dashboard, its window bound, and which readers the PIN is released to |
+| `church-functions.test.js` | `ChurchFunctions.create(...)`: `amount_matches_payment` mirrored — no amount against a free function, whatever was typed. `ChurchFunctions.list(...)`: the three tallies, and the one `in`-read per child table rather than one per function. `ChurchFunctions.details(...)`: both answers folded onto one line per person, an unknown address kept and named by its email, and a function from another fellowship refused before any name is read |
 
 ## What the tests actually assert
 
@@ -31,10 +33,10 @@ edit changes.
 Each `from(...)` chain on the mock records its filters, so a test reads like a specification:
 
 ```js
-const filters = mock.lastCall('session').filters;
-expect(filters).toContainEqual(['or', 'cancel.eq.false,cancel.is.null']);
-expect(filters).toContainEqual(['lte', 'started_at', expect.any(String)]);
-expect(filters).toContainEqual(['gte', 'ended_at', expect.any(String)]);
+const [call] = mock.callsFor('session');
+expect(call.or).toBe('cancel.eq.false,cancel.is.null');
+expect(call.filters).toContainEqual({ kind: 'lte', col: 'started_at', val: expect.any(String) });
+expect(call.filters).toContainEqual({ kind: 'gte', col: 'ended_at', val: expect.any(String) });
 ```
 
 That is enough to catch the failure mode we've actually been afraid of: swapping `.or(...)` for
@@ -47,7 +49,7 @@ This test fails on the first `npm test` after that edit.
 `tests/helpers/mock-supabase.js` exports one factory:
 
 ```js
-makeSupabaseMock({ session, event, users, insertReturns })
+makeSupabaseMock({ session, event, users, functions, function_attending, function_paid, insertReturns, singleAsRow })
 ```
 
 It returns an object shaped like a `createClient()` result — `.from(table)` gives back a
@@ -57,12 +59,17 @@ resolves to the preloaded rows for that table when awaited. `.insert(row)` echoe
 when `insertReturns` is set, which is what lets a happy-path create test read the row the code
 thought it wrote.
 
+`singleAsRow` is the one behavioural switch, and it is off by default. PostgREST answers a read that
+ends in `.single()` or `.maybeSingle()` with one object rather than a one-row array, and a class that
+reads a row by its id — `ChurchFunctions.details` does — needs that shape. Every test written against
+rows a class iterates over keeps getting the whole table, because the default was left as the mock
+always behaved rather than changed under the older suites.
+
 Two accessors make the assertions readable:
 
 ```js
-mock.calls            // every recorded call, in order
-mock.callsFor('event') // just the ones against a table
-mock.lastCall('session') // the most recent against that table
+mock.calls             // every recorded call, in order, each with its .filters and its .or
+mock.callsFor('event') // just the ones against a table, oldest first
 ```
 
 ??? info "Why not `supabase-js` with a fake HTTP layer?"

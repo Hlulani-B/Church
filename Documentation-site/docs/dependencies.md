@@ -53,6 +53,27 @@ than `firebase-admin`: no service account to keep secret, no cold-start payload,
 boundary is eleven lines of readable code instead of a 30 MB dependency. There is no Express, no
 body parser, no CORS package and no JWT library.
 
+## The standalone server, under `server/`
+
+That "no Express" is true of the Vercel functions and of nothing else in the repository. `server/`
+is a separate Node application with its own `package.json`, its own lockfile and its own
+`node_modules`, and it is not imported by `api/*`, `lib/god.js` or the browser bundle — the two
+halves of this project reach Supabase through the same product and through entirely different code.
+
+| Package | Version | What it is for | License |
+|---|---|---|---|
+| `express` | ^5.3.0 | The HTTP layer, and the router-per-feature shape under `server/src/routes/`. | MIT |
+| `@supabase/supabase-js` | ^2.119.2 | Its own service-role client, built in `server/src/supabase.js`. | MIT |
+| `dotenv` | ^16.4.5 | Reads `server/.env` at boot. | BSD-2-Clause |
+| `nodemon` | ^3.1.14 | Dev only — `npm run dev` in that folder. | MIT |
+
+It is deployed by the [`render.yaml`](https://github.com/Hlulani-B/Church/blob/main/render.yaml) at
+the repository root — a blueprint, so Render builds and starts that folder from what the file says
+rather than from a dashboard form somebody filled in once. Worth saying plainly: the routes
+mounted there today are `/health` and `/servings`, and neither asks who is calling — no bearer check,
+no role gate, no community gate, none of the tiers `api/*` keeps. Whatever gets mounted there has to
+earn that before it is pointed at real people's rows.
+
 ## File exports
 
 Both exported formats are written byte by byte in the browser, in
@@ -104,7 +125,7 @@ live third-party request and a piece of uptime somebody else controls.
 | Firebase Authentication | The app, over HTTPS | Identity provider; stores the sign-in methods and the refresh tokens. |
 | Supabase (Postgres) | App and server, over HTTPS | Every table this project reads or writes. |
 | Vercel | App and `api/*` | Hosting, the request TLS terminus, and the `church-juef.vercel.app` origin that the QR payload is built from. |
-| Render | The documentation site | Static site, built by `Documentation-site/render.yaml`. |
+| Render | The documentation site, and the server under `server/` | Static site built by `Documentation-site/render.yaml`; the Node app built by the root `render.yaml`. |
 
 No analytics, no advertising or social SDKs, and no error-reporting service: a failure reaches the
 browser and the Vercel function logs, nowhere else.

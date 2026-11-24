@@ -10,6 +10,7 @@ import {
   authenticate,
   matchesServerKey,
   reading,
+  resolveAbsenceGathering,
   verifiedEmail,
   finish,
 } from '../lib/god.js'
@@ -111,30 +112,16 @@ export default async function handler(req, res) {
       }
       /*
         The gathering is named by the session, not typed into the box — so when no name arrives
-        with the request, the server reads it back off this community's sessions for that day. A
-        day with no session is a day with nothing to be absent from; a day with more than one is
-        ambiguous and is refused rather than guessed at. A name that does arrive — from an older
-        caller, or from any path that already knows the gathering — is kept exactly as given, so
-        this only fills the box the absence form no longer has.
+        with the request, the server reads it back off this community's sessions for that day, in
+        the one helper /api/leader reaches through the same door when the For-who box names
+        somebody else. A name that does arrive — from an older caller, or from any path that
+        already knows the gathering — is kept exactly as given, so this only fills the box the
+        absence form no longer has.
       */
-      if (!event_name) {
-        const onDay = (await new Session(god.url, god.key).all({
-          community_id: params.community_id,
-          date: event_date,
-        })).filter((one) => one.cancel !== true && one.event_name)
-        if (!onDay.length) {
-          return res.status(400).json({
-            error:
-              'there is no session on that day in this community, so there is nothing to record an absence against — a gathering takes its name from the session the leader opens for it',
-          })
-        }
-        if (onDay.length > 1) {
-          return res.status(400).json({
-            error:
-              'more than one gathering sits on that day, so this absence cannot be placed — wait for the leader to open its session',
-          })
-        }
-        event_name = onDay[0].event_name
+      try {
+        event_name = await resolveAbsenceGathering(god, params.community_id, event_date, event_name)
+      } catch (error) {
+        return res.status(error.status || 500).json({ error: error.message })
       }
       const gatherings = new Event(god.url, god.key)
       const [already] = await gatherings.all({

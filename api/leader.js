@@ -1,10 +1,13 @@
 import { Session } from '../src/functions/session.js'
+import { CommunityMember } from '../src/functions/community_members.js'
+import { Event } from '../src/functions/event.js'
 import { cors } from '../lib/cors.js'
 import {
   God,
   authenticate,
   matchesServerKey,
   roleGate,
+  resolveAbsenceGathering,
   verifiedEmail,
   finish,
 } from '../lib/god.js'
@@ -32,6 +35,12 @@ const LEADER_ACTIONS = {
   attendance: ['services', 'service'],
   admin: ['roster'],
   session: ['create', 'pin', 'manage', 'revise'],
+  // The For-who box's two moves: read this community's people, and record one of them away.
+  user: ['getUsers'],
+  event: ['record_for'],
+  // The functions page: what this community has planned, the planning of one more, and one of
+  // them opened out with everybody who has answered it.
+  church_function: ['list', 'create', 'details'],
 }
 
 export default async function handler(req, res) {
@@ -69,6 +78,76 @@ export default async function handler(req, res) {
     */
     const link = await roleGate(god, email, params.community_id, 'leader', res)
     if (!link) return
+
+    /*
+      Recording that somebody else in this community will not be at a gathering — the write the
+      For-who box on the admin and leader attendance pages makes, and the one write at this tier
+      that touches anybody's attendance but the caller's own. The same hardenings /api/self
+      applies to a member's own notice all stand here: the answer is forced to not attending, so
+      this path cannot hand out a presence; the gathering is named by the session opened for that
+      day, through the same shared helper; only these columns are rebuilt, so no session, place
+      or checked-in time rides in on a body; and a row that already says present refuses the
+      write, so a leader cannot talk anybody else's yes back into a no either. One hardening is
+      this tier's own: the address comes from the body because the caller may name anybody, so
+      that person's community_members row for exactly this community_id is read before anything
+      is written — a leader of one fellowship cannot put an absence on a stranger — and the
+      caller's token address is kept as `recorded_by`, whose hand put the notice down.
+    */
+    if (action === 'event' && params.function === 'record_for') {
+      const event_date = String(params.event_date || '').trim()
+      const reason = String(params.reason || '').trim()
+      const member_email = String(params.user_email || '').trim()
+      if (!event_date) {
+        return res.status(400).json({ error: 'params.event_date is required to record an absence' })
+      }
+      if (!member_email) {
+        return res
+          .status(400)
+          .json({ error: 'params.user_email is required to record who is not attending' })
+      }
+      const named_member = await new CommunityMember(god.url, god.key).find(
+        member_email,
+        params.community_id,
+      )
+      if (!named_member) {
+        return res.status(403).json({
+          error: 'that person is not a member of this community, so no absence can be recorded for them here',
+        })
+      }
+      let event_name
+      try {
+        event_name = await resolveAbsenceGathering(
+          god,
+          params.community_id,
+          event_date,
+          params.event_name,
+        )
+      } catch (error) {
+        return res.status(error.status || 500).json({ error: error.message })
+      }
+      const gatherings = new Event(god.url, god.key)
+      const [already] = await gatherings.all({
+        community_id: params.community_id,
+        event_date,
+        event_name,
+        user_email: member_email,
+      })
+      if (already?.attend) {
+        return res.status(403).json({
+          error: 'that person is recorded as present at that gathering, and a yes is never taken back',
+        })
+      }
+      params = {
+        function: 'record',
+        community_id: params.community_id,
+        event_date,
+        event_name,
+        user_email: member_email,
+        attend: false,
+        reason: reason || null,
+        recorded_by: email,
+      }
+    }
 
     /*
       What the leader and admin dashboards listen to, and the two changes they can make to a
@@ -241,6 +320,84 @@ export default async function handler(req, res) {
         recorded_by: email,
         latitude,
         longitude,
+      }
+    }
+    /*
+      Planning a function: what it is called, the day it is held, where, and whether it costs
+      anything. The shape is the one every write here keeps — the columns the page gets to choose
+      are named out one by one, so nothing that was not asked for rides in on a body, and
+      `created_by` is the address off the caller's token rather than the one in the request. Two
+      of the refusals are the table's own rules said in words a page can show: the
+      `amount_matches_payment` check refuses a number against no payment requirement and refuses
+      nothing against a requirement, and `numeric(10,2)` holds two decimals and no more, so both
+      are settled here instead of arriving back as a 23514 nobody can interpret.
+
+      A function that asks for no money is not stored as zero. It is stored with no amount at all,
+      which is what the check means by free, and what keeps a later read from showing "R 0.00 per
+      head" for a gathering nobody is being charged for.
+    */
+    if (action === 'church_function' && params.function === 'create') {
+      const name = String(params.name || '').trim()
+      if (!name) {
+        return res.status(400).json({ error: 'params.name is required — a function has to be called something' })
+      }
+      const function_date = String(params.function_date || '').slice(0, 10)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(function_date)) {
+        return res
+          .status(400)
+          .json({ error: 'params.function_date is the day the function is held, as YYYY-MM-DD' })
+      }
+      const requires_payment = params.requires_payment === true
+      let amount = null
+      if (requires_payment) {
+        amount =
+          params.amount === null || params.amount === undefined || params.amount === ''
+            ? NaN
+            : Number(params.amount)
+        if (!Number.isFinite(amount) || amount <= 0) {
+          return res.status(400).json({
+            error: 'a function that asks for money needs an amount above zero — turn the requirement off if nobody is paying',
+          })
+        }
+        if (Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-9 || amount >= 100000000) {
+          return res.status(400).json({
+            error: 'that amount is more than two decimal places, or more than the table can hold',
+          })
+        }
+        // Fixed to the two the column keeps, so the number the page is answered with is the one
+        // that was stored rather than one the browser drew.
+        amount = Math.round(amount * 100) / 100
+      }
+      const location = String(params.location || '').trim()
+      params = {
+        function: 'create',
+        community_id: params.community_id,
+        name,
+        function_date,
+        location: location || null,
+        requires_payment,
+        amount,
+        created_by: email,
+      }
+    }
+    /*
+      Opening one function out. The community the caller leads was settled above, so all that is
+      asked here is which function: a bare id, digits only, because the column is a bigint and a
+      letter in the url would otherwise reach PostgREST as a bad comparison rather than an answer
+      here. Which community the row really belongs to is not the page's to say — the class reads the
+      row and compares its community_id with the gated one.
+    */
+    if (action === 'church_function' && params.function === 'details') {
+      const function_id = String(params.function_id ?? '').trim()
+      if (!/^\d+$/.test(function_id)) {
+        return res
+          .status(400)
+          .json({ error: 'params.function_id is the number a planned function is addressed by' })
+      }
+      params = {
+        function: 'details',
+        community_id: params.community_id,
+        function_id,
       }
     }
   }

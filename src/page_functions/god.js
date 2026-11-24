@@ -21,14 +21,18 @@ import { auth, ready } from '../firebase.js'
 // Which tier owns each call. A plain string is the whole action; a function routes within an
 // action by params.function. This mirrors the whitelists the three endpoints check their side of.
 const TIER = {
-  user: 'self',
+  // 'getUsers' names the community's people, which is a leader's read; the caller's own row stays self.
+  user: (fn) => (fn === 'getUsers' ? 'leader' : 'self'),
   community: (fn) => (fn === 'find' ? 'admin' : 'self'),
   member: (fn) => (fn === 'remove' ? 'admin' : 'self'),
   admin: (fn) => (fn === 'roster' ? 'leader' : fn === 'hosts' ? 'self' : 'admin'),
   attendance: 'leader',
-  event: 'self',
+  // A member's own notice is self-tier; naming somebody else in it is a leader's move.
+  event: (fn) => (fn === 'record_for' ? 'leader' : 'self'),
   session: (fn) => (fn === 'open' || fn === 'live' ? 'self' : 'leader'),
   feedback: 'self',
+  // Both moves on the functions page belong to whoever runs the fellowship, admin or leader.
+  church_function: 'leader',
 }
 const PATH = { self: '/api/self', leader: '/api/leader', admin: '/api/admin' }
 

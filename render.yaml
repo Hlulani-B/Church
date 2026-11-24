@@ -1,0 +1,55 @@
+# Render blueprint for the standalone Express server that lives under server/.
+#
+# One service. The app itself stays on Vercel, and the documentation site has its own blueprint at
+# Documentation-site/render.yaml — this file touches neither.
+#
+# To use it: New + then Blueprint in the Render dashboard, and point it at this repository.
+#
+# Everything here was read off the code rather than assumed:
+#   - the app listens on process.env.PORT, defaulting to 4000 (server/index.js), so PORT is left to
+#     Render to set;
+#   - the Supabase client is built from SUPABASE_URL and SUPABASE_SECRET_KEY and nothing else, with no
+#     default for either (server/src/supabase.js), so both have to be present for the process to boot;
+#   - /health answers { ok: true } without touching the database
+#     (server/src/routes/health.routes.js), so it is the right place for Render to check liveness.
+
+services:
+  - type: web
+    name: church-server
+    runtime: node
+    plan: free
+    rootDir: server
+
+    # server/package-lock.json is committed, so a clean install is reproducible.
+    buildCommand: npm ci
+
+    # What `npm start` runs. Render supervises the process, so the dev script's nodemon is not wanted.
+    startCommand: node index.js
+
+    healthCheckPath: /health
+
+    autoDeploy: true
+
+    envVars:
+      # Matches the app's own engine (server/package.json asks for Node 18 or newer).
+      - key: NODE_VERSION
+        value: 22
+
+      # A service-role key, so it is never committed: server/.gitignore already keeps .env out of git.
+      # Without SUPABASE_URL the client raises "supabaseUrl is required" as soon as src/supabase.js is
+      # imported, and the service fails at boot rather than starting half-configured.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+
+      # Optional. Origins this server should answer cross-origin, comma separated. Only needed if
+      # something other than https://church-juef.vercel.app is to call it from a browser — that one is
+      # already allow-listed in server/src/app.js, and localhost is answered while NODE_ENV is unset.
+      - key: CORS_ORIGINS
+        sync: false
+
+    # Worth knowing before this goes public: routes/index.js mounts only /health and /servings today,
+    # and neither asks who is calling. Anything deployed as it stands is readable by anyone who knows
+    # the url, so give this service a secret or put an auth gate on the route before pointing the app
+    # at it. The api/ functions on Vercel keep their own bearer + role + community gates instead.

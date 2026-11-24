@@ -200,11 +200,19 @@ sets `cancel = true`. Cancellation is one-way — there is no un-cancel — beca
 check-in is a decision made in front of a room, and reopening it would let the register be
 shaped after the fact.
 
+A called-off session then leaves the dashboard entirely. `Session.manage` carries the same
+`cancel.eq.false,cancel.is.null` guard as `live`, so the row is dropped from the read rather than
+sent down for the page to hide: nothing about it is manageable any more, yet the row still holds
+its PIN and the QR rendered from it, which on a dead session is a secret with no room left to say
+it in. The practical effect is that **Cancel session** makes the card vanish on the spot — the
+component removes the row from its own state before the refresh returns, exactly the way a landing
+check-in removes the member's card — and a toast says so two seconds later.
+
 ## What the tests lock down
 
-`tests/session-live.test.js` (twelve cases) and `tests/session-create.test.js` (six cases) run
-against a chainable Supabase mock and assert on the shape of the queries the code builds, not on
-what Postgres would return. They fail if a future edit drops the `cancel` null-tolerance,
-narrows or widens the window filter, forgets the already-marked pass, exposes `pin` in `live`,
-or removes the overlap guard. See [Testing](testing.md) for how to run them and how the mock
-works.
+`tests/session-live.test.js` (twelve cases), `tests/session-create.test.js` (six cases) and
+`tests/session-manage.test.js` (six cases) run against a chainable Supabase mock and assert on the
+shape of the queries the code builds, not on what Postgres would return. They fail if a future edit
+drops the `cancel` null-tolerance, narrows or widens the window filter, forgets the already-marked
+pass, exposes `pin` in `live` or to a leader who did not open the session, or removes the overlap
+guard. See [Testing](testing.md) for how to run them and how the mock works.

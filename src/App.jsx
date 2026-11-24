@@ -17,6 +17,8 @@ import LeaderAttendance from './leader/attendance.jsx'
 import MemberDashboard from './member/Dashboard.jsx'
 import MemberTestimonies from './member/testimonies.jsx'
 import TakeAttendance from './pages/take_attendance.jsx'
+import ServingsPage from './pages/servings.jsx'
+import FunctionsPage from './pages/functions.jsx'
 import ToastHost from './components/toast.jsx'
 
 function NotFound() {
@@ -50,6 +52,8 @@ function App() {
         <Route path="/member-dashboard" element={<MemberDashboard />} />
         <Route path="/member-testimonies" element={<MemberTestimonies />} />
         <Route path="/take-attendance" element={<TakeAttendance />} />
+        <Route path="/servings" element={<ServingsPage />} />
+        <Route path="/functions" element={<FunctionsPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       {/* One host, mounted above the router so a check-in landing on any page can push a toast

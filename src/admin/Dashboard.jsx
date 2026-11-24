@@ -7,6 +7,7 @@ import BackToCommunities from "../components/back.jsx";
 import AttendanceControl from "../components/attendance_control.jsx";
 import SessionLive from "../components/session_live.jsx";
 import { adminState, rememberAdmin } from "./state.js";
+import servings from "../page_functions/servings.js";
 
 const accounts = new Auth();
 const dashboard = new AdminDashboardFetch();
@@ -289,8 +290,16 @@ export default function AdminDashboard() {
       setCommunity(row);
       setCopied(false);
       setRoster({ community_id: communityId, rows: await dashboard.getMembers(communityId) });
+      // Take their serving row out of the same community too. They are already removed, so a
+      // failure here is noted rather than allowed to undo the removal.
+      let serving = "";
+      try {
+        await servings.removeRole({ email: target.email, community_id: communityId });
+      } catch (e) {
+        serving = ` Their serving row was not removed: ${e.message}`;
+      }
       setNote(
-        `${target.name} ${target.surname} is out of ${row.name}. Its join code is now ${row.join_id}, so tell everyone the new one.`,
+        `${target.name} ${target.surname} is out of ${row.name}. Its join code is now ${row.join_id}, so tell everyone the new one.${serving}`,
       );
       setConfirm(null);
     } catch (e) {
@@ -470,6 +479,18 @@ export default function AdminDashboard() {
               onClick={() => navigate("/feedback/all")}
             >
               Read feedback
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/servings", { state: { ...heading, role: "admin" } })}
+            >
+              Servings
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/functions", { state: { ...heading, role: "admin" } })}
+            >
+              Functions
             </button>
           </div>
         )}

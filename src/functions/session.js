@@ -227,6 +227,7 @@ export class Session {
         'session_id, event_name, date, started_at, ended_at, radius, allow_any_radius, cancel, created_by, pin',
       )
       .eq('community_id', community_id)
+      .or('cancel.eq.false,cancel.is.null')
       .gte('ended_at', new Date().toISOString())
       .order('started_at', { ascending: false })
     if (error) throw error

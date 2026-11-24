@@ -79,10 +79,12 @@ export class SessionFetch {
 
   /*
     What the leader and admin dashboards listen to on a timer: every check-in in this community
-    that has not yet ended, each with its window, radius and whether it was cancelled, marked as
-    mine or someone else's. Unlike the member's open-sessions poll this answers to the leader tier,
-    because it carries the PIN — but only for the rows the caller opened, and for every row when
-    they are an admin, so a second leader cannot read digits off a gathering they are not running.
+    that is still theirs to act on — neither called off nor already ended — each with its window
+    and radius, marked as mine or someone else's. Unlike the member's open-sessions poll this answers to
+    the leader tier, because it carries the PIN — but only for the rows the caller opened, and for
+    every row when they are an admin, so a second leader cannot read digits off a gathering they are
+    not running. A cancelled session leaves this list entirely, which is why pressing Cancel makes
+    its card (and its QR) disappear instead of sitting there marked off.
   */
   async manageSessions({ community_id }) {
     return callGod('session', { function: 'manage', community_id })

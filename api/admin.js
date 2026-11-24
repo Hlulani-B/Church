@@ -25,6 +25,16 @@ import {
   there, so no tier can borrow another's power by guessing an endpoint.
 */
 
+/*
+  No Supabase client is built here. Every read and write this endpoint makes goes through God and
+  the table classes, which are handed god.url / god.key once the caller has been verified — the
+  direct client this file used to open at module level read SUPABASE_SECRET_KEY, a name the root
+  .env.local never had (it holds SUPABASE_SERVICE_ROLE_KEY), so supabase-js threw
+  'supabaseKey is required.' while the file was still being imported. That killed /api/admin before
+  its handler ran, and took the whole `vercel dev` down with it. The key lives in server/.env,
+  because it belongs to the standalone Express server in server/, not to these endpoints.
+*/
+
 // What an admin browser may do at this tier, and nothing else.
 const ADMIN_ACTIONS = {
   admin: ['changeCode', 'assign'],
@@ -137,4 +147,11 @@ export default async function handler(req, res) {
   }
 
   return finish(god, action, params, null, res)
+}
+
+
+
+
+export async function attendance(){
+  //The admin must take their own attendance
 }

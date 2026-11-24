@@ -230,6 +230,18 @@ export default function LeaderDashboard() {
             >
               View testimonies
             </button>
+            <button
+              type="button"
+              onClick={() => navigate("/servings", { state: { ...heading, role: "leader" } })}
+            >
+              Servings
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/functions", { state: { ...heading, role: "leader" } })}
+            >
+              Functions
+            </button>
           </div>
         )}
 

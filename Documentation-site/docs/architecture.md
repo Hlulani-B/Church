@@ -97,6 +97,7 @@ So the split today is:
 | Take attendance — leader opens a session, sees its PIN and QR | `/api/leader` `session` `create` |
 | `/qr` landing — phone that scanned the QR; also signs a first-timer up inline and adds them to the fellowship | Firebase auth + `/api/self` `event` `checkin`, `community` `join_at_session` |
 | Feedback — the form every member can reach from the menu, and the pile everyone can read | `/api/self` `feedback` `create` / `all` |
+| Functions — a leader or an admin plans a gathering, reads its tallies, and opens one out to see who has answered | `/api/leader` `church_function` `list` / `create` / `details` |
 
 The leader pages are the admin ones with nothing to click: the roster arrives without the
 ⋮ menu that changes a role or takes somebody out, and no leader page asks the function for
@@ -149,6 +150,19 @@ instead.
 - **Row level security is on** for `users`, `community`, `community_members` and
   `session`. Reading each of them with the browser key returns **0 rows** while the same
   query with the service key returns 67, 2, 66 and 10.
+- **The three function tables are gated the same way**, and this one was asked on 2026-11-24
+  rather than 2026-11-14, through the dispatcher the endpoints use and against every community
+  in the project. The browser key read **0 rows** out of `functions` where the service key read
+  the table unhindered; the service key found 0 planned functions across all seven communities,
+  which is what the functions page shows as "nothing has been planned for this community yet".
+  A `church_function` `list` with no `community_id` is refused by the dispatcher, in words:
+  `params.community_id is required for 'list'`. The same was then asked of `details`, the read
+  behind an opened function: both halves are required (`params.function_id is required for
+  'details'` and its community twin), an id matching no row is answered as `there is no such
+  function` rather than as an empty page, and the browser key was turned away the same way the
+  list read was. What this probe did **not** do is write: neither `amount_matches_payment` nor
+  `paid_fields_match` has been answered with a refused insert, and nothing writes the two child
+  tables at all yet, so no real answer row has passed through `details` either.
 - **A member has one attendance row per event.** `event` is unique on
   `(community_id, event_date, event_name, user_email)`; a second insert with those four
   values is refused with `23505`. A check-in can be sent as many times as the network

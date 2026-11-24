@@ -1,10 +1,21 @@
 import { callGod } from './god.js'
 
-// Page fetches for the signed-in person's own users row.
+// Page fetches for the users table: the signed-in person's own row, and the read the absence
+// form's For-who box makes for the whole community.
 export class UserFetch {
   // The caller's row, or null when the address is not in the table yet.
   async find(email) {
     return callGod('user', { function: 'find', email })
+  }
+
+  /*
+    The people of one community — email, name and surname — for whoever leads or admins it.
+    The server takes the community_id, reads the addresses off community_members and then the
+    names off users, so a For-who list is the roster's own people and row level security never
+    puts a name in a browser's hands directly.
+  */
+  async getUsers(community_id) {
+    return callGod('user', { function: 'getUsers', community_id })
   }
 
   async create({ email, name, surname }) {

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
 import { TestimoniesFetch } from "../page_functions/testimonies.js";
+import { decryptText } from "../page_functions/crypto.js";
 import Menu from "../components/menu.jsx";
 import BackToCommunities from "../components/back.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
@@ -62,6 +63,57 @@ function pretty(date) {
     : read.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
+/*
+  How one testimony's body is shown, whatever the author attached. The stored body is now one of
+  three things: encrypted words (an `enc:v1:` string we decrypt here), an uploaded file's public
+  URL (image / pdf / docx), or an old plain-text row. The type is read back off the value itself,
+  so this page does not need the fetch to carry a separate column.
+*/
+function TestimonyBody({ value }) {
+  const [text, setText] = useState(null);
+  const [failed, setFailed] = useState("");
+
+  const encrypted = typeof value === "string" && value.startsWith("enc:v1:");
+  const isUrl = typeof value === "string" && /^https?:\/\//i.test(value);
+  const ext = isUrl ? value.split("?")[0].split(".").pop().toLowerCase() : "";
+
+  useEffect(() => {
+    if (!encrypted) return undefined;
+    let live = true;
+    decryptText(value)
+      .then((plain) => live && setText(plain))
+      .catch((e) => live && setFailed(e.message || "This testimony could not be opened."));
+    return () => {
+      live = false;
+    };
+  }, [value, encrypted]);
+
+  if (isUrl) {
+    if (["png", "jpg", "jpeg", "webp", "gif", "avif"].includes(ext)) {
+      return <img src={value} alt="Testimony image" style={{ maxWidth: "100%", height: "auto" }} />;
+    }
+    const label =
+      ext === "pdf"
+        ? "Open the PDF testimony"
+        : ext === "docx"
+          ? "Download the document"
+          : "Open the attached file";
+    return (
+      <a href={value} target="_blank" rel="noreferrer">
+        {label}
+      </a>
+    );
+  }
+
+  if (encrypted) {
+    if (failed) return <span>{failed}</span>;
+    if (text === null) return <span>Opening…</span>;
+    return <span style={{ whiteSpace: "pre-wrap" }}>{text}</span>;
+  }
+
+  return <span style={{ whiteSpace: "pre-wrap" }}>{value}</span>;
+}
+
 export default function MemberTestimonies() {
   const navigate = useNavigate();
   const route = useLocation().state;
@@ -97,7 +149,7 @@ export default function MemberTestimonies() {
   useEffect(() => {
     if (!email || !communityId) return;
     testimonies
-      .getTestimonies(communityId, offset)
+      .getTestimonies(communityId, offset, {}, email)
       .then((result) => {
         setFetched({ ...result, community_id: communityId });
         setError("");
@@ -176,7 +228,7 @@ export default function MemberTestimonies() {
                 {page.testimonies.map((one) => (
                   <article className="item" key={one.testimony_id}>
                     <p className="when">{pretty(one.date)}</p>
-                    <p className="body">{one.body}</p>
+                    <p className="body"><TestimonyBody value={one.body} /></p>
                   </article>
                 ))}
 

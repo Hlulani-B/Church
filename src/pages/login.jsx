@@ -3,11 +3,22 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
 import { auth } from "../firebase.js";
 import { Auth } from "../functions/auth.js";
+import { UserFetch } from "../page_functions/user.js";
 
 const accounts = new Auth();
+const users = new UserFetch();
 const googleProvider = new GoogleAuthProvider();
 
 const EMAIL_KEY = "kopano_email";
+
+/*
+  Login never creates anything. It only asks the users table whether this address is an account
+  yet: no row means the person has not finished creating an account, so they are sent to /signup
+  rather than let through. This is the same check the held-session effect below makes.
+*/
+async function accountExists(user) {
+  return Boolean(await users.find(user.email));
+}
 
 function friendlyError(error) {
   switch (error?.code) {
@@ -99,12 +110,37 @@ export default function LoginPage() {
   const [suggestSignup, setSuggestSignup] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // A held session means you are already inside: opening /login should not ask again.
-  // Through Auth.onChange, so it waits for storage the same way every other page does.
+  // A held session is not an account. The users table is the authority, so a session only walks
+  // straight through to /community when that table already holds this address; otherwise it is
+  // sent to create an account, the same check the form makes. Through Auth.onChange, so it waits
+  // for storage the same way every other page does.
   useEffect(() => {
-    return accounts.onChange((user) => {
-      if (user) navigate("/community", { replace: true });
+    let cancelled = false;
+    const stop = accounts.onChange((user) => {
+      if (!user) return;
+      users
+        .find(user.email)
+        .then((found) => {
+          if (cancelled) return;
+          if (found) {
+            navigate("/community", { replace: true });
+          } else {
+            navigate("/signup", {
+              replace: true,
+              state: { notice: "Your login worked, but no account exists for this email yet, so create one." },
+            });
+          }
+        })
+        .catch(() => {
+          // Verification failed, which is not the same as "no account" and never means "let them
+          // in": a held session is only walked through on a confirmed row, so it stays on /login.
+          if (!cancelled) setError("We could not confirm your account, so please try again.");
+        });
     });
+    return () => {
+      cancelled = true;
+      stop();
+    };
   }, [navigate]);
 
   function goHome() {
@@ -119,7 +155,13 @@ export default function LoginPage() {
     try {
       const result = await signInWithEmailAndPassword(auth, email, password);
       localStorage.setItem(EMAIL_KEY, result.user.email);
-      goHome();
+      if (await accountExists(result.user)) {
+        goHome();
+        return;
+      }
+      navigate("/signup", {
+        state: { notice: "Your login worked, but no account exists for this email yet, so create one." },
+      });
     } catch (err) {
       if (err.code === "auth/user-not-found") {
         navigate("/signup", {
@@ -139,7 +181,13 @@ export default function LoginPage() {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       localStorage.setItem(EMAIL_KEY, result.user.email);
-      goHome();
+      if (await accountExists(result.user)) {
+        goHome();
+        return;
+      }
+      navigate("/signup", {
+        state: { notice: "Your login worked, but no account exists for this email yet, so create one." },
+      });
     } catch (err) {
       setError(friendlyError(err));
       setBusy(false);

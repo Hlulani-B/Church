@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
 import { CommunityFetch } from "../page_functions/community.js";
 import { UserFetch } from "../page_functions/user.js";
+import servings from "../page_functions/servings.js";
 import Menu from "../components/menu.jsx";
 
 const accounts = new Auth();
@@ -101,8 +102,29 @@ export default function CommunityPage() {
     setPopupError("");
   }
 
+  // The person's own name, surname and address: the members row when it is there, else Firebase.
+  function whoIAm() {
+    const given = (signedIn?.displayName || "").trim().split(/\s+/);
+    return {
+      name: member?.name || given[0] || "",
+      surname: member?.surname || given.slice(1).join(" ") || "",
+      email: member?.email || signedIn?.email || "",
+    };
+  }
+
+  // A community is only built on an address its owner has proved they read: a signup that
+  // never clicked the verification link can open neither a new community nor a joining.
+  // Google accounts arrive verified, so this only holds people to the link already sent.
+  function unverifiedEmail() {
+    return Boolean(signedIn) && signedIn.emailVerified !== true;
+  }
+
   async function submitCommunity(event) {
     event.preventDefault();
+    if (unverifiedEmail()) {
+      setPopupError("Verify your email first — the link is in your inbox — then create the community.");
+      return;
+    }
     const name = communityName.trim();
     if (!name) {
       setPopupError("Give the community a name first.");
@@ -112,10 +134,27 @@ export default function CommunityPage() {
     setPopupError("");
     try {
       const created = await communities.createCommunity(name);
+
+      // The community and the caller's admin membership are committed here and are the real result
+      // of this action. The serving is a secondary record written by the separate standalone server,
+      // so it goes best-effort: if that call fails the community is still open and the person is
+      // still its admin, and saying so beats failing the whole create and pushing a retry that would
+      // only mint a second community.
       closePopup();
       setNote(
         `“${created.name}” is open, you are its admin, and its join code is ${created.join_id}.`,
       );
+
+      const me = whoIAm();
+      if (created?.community_id && me.name && me.surname && me.email) {
+        try {
+          await servings.addServing({ ...me, community_id: created.community_id });
+        } catch (servingError) {
+          setNote(
+            `“${created.name}” is open and you are its admin, but its serving did not record (${servingError.message}).`,
+          );
+        }
+      }
     } catch (error) {
       setPopupError(error.message);
       return;
@@ -127,6 +166,10 @@ export default function CommunityPage() {
 
   async function submitJoin(event) {
     event.preventDefault();
+    if (unverifiedEmail()) {
+      setPopupError("Verify your email first — the link is in your inbox — then join the community.");
+      return;
+    }
     const code = joinCode.trim().toUpperCase();
     if (!code) {
       setPopupError("Type the join code an admin of that community gave you.");
@@ -137,12 +180,27 @@ export default function CommunityPage() {
     try {
       const joined = await communities.joinCommunity(code);
       setMine(joined.mine);
+
+      // Joining is committed and is the real result; the serving rides a separate call to the
+      // standalone server and is written best-effort, so a serving failure cannot make a successful
+      // join look like it failed and send the person to retry.
       closePopup();
       setNote(
         joined.name
           ? `You are a member of “${joined.name}” now. Open it below.`
           : "You are a member of that community now. Open it below.",
       );
+
+      const me = whoIAm();
+      if (joined?.community_id && me.name && me.surname && me.email) {
+        try {
+          await servings.addServing({ ...me, community_id: joined.community_id });
+        } catch (servingError) {
+          setNote(
+            `You are a member of that community now, but your serving did not record (${servingError.message}).`,
+          );
+        }
+      }
     } catch (error) {
       setPopupError(error.message);
     } finally {

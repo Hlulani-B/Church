@@ -2,12 +2,15 @@ import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
 import { AttendanceFetch, REASONS } from "../page_functions/attendance.js";
+import { UserFetch } from "../page_functions/user.js";
+import AbsenceFor, { displayName } from "../components/absence_for.jsx";
 import AdminMenu from "./menu.jsx";
 import BackToCommunities from "../components/back.jsx";
 import { adminState, rememberAdmin } from "./state.js";
 
 const accounts = new Auth();
 const attendance = new AttendanceFetch();
+const directory = new UserFetch();
 
 const css = `
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;1,500&display=swap");
@@ -103,16 +106,20 @@ export default function AdminAttendance() {
   const [picked, setPicked] = useState(null);
   const [found, setFound] = useState(null);
   /*
-    The notice the top of this page writes: a day, a gathering, a reason. Whether the person
-    came is not one of the boxes — this page cannot record attendance, only the lack of it.
-    `refresh` is what makes the list read itself again once a notice is written, so the new row
-    turns up in its gathering without a reload.
+    The notice the top of this page writes: who, a day, a reason. Whether the person came is not
+    one of the boxes — this page cannot record attendance, only the lack of it — and the who is
+    now a box: the For-who dropdown, whose first entry is the admin's own address and whose rest
+    are the community's people. `refresh` is what makes the list read itself again once a notice
+    is written, so the new row turns up in its gathering without a reload.
   */
-  const [absence, setAbsence] = useState({ date: today(), reason: "" });
+  const [absence, setAbsence] = useState({ date: today(), reason: "", email: "" });
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState("");
+  // The people the For-who box offers, and the failure that leaves it offering only the caller.
+  const [peopleList, setPeopleList] = useState(null);
+  const [peopleError, setPeopleError] = useState("");
   /*
     The notice keeps its own refusal. `error` means a read failed, and every list on this page
     hides itself while it is set — so when a notice was the thing that failed, writing it took
@@ -160,9 +167,29 @@ export default function AdminAttendance() {
   const list = listed?.community_id === communityId ? listed : null;
   const chosen = picked?.community_id === communityId ? picked : null;
   const gathering = found?.community_id === communityId ? found : null;
+  const roster = peopleList?.community_id === communityId ? peopleList.rows : null;
 
   // The apologies already on file for whichever gathering is on screen.
   const notices = gathering ? gathering.rows.filter((one) => one.attend === false).length : 0;
+
+  /*
+    What the For-who box offers: the caller's own details at the very top — the row this page
+    wrote for itself before the box existed — and then this community's people, the roster
+    minus the double entry for whoever the caller is. While the read is still in flight the
+    box is empty and says so; when it failed, the box keeps the one notice this page has
+    always been able to make: the admin's own, and the failure is shown rather than hidden.
+  */
+  const selfRow =
+    (roster || []).find((one) => one.email === email) ||
+    { email, name: adminName || "", surname: "" };
+  const people = peopleError
+    ? [selfRow]
+    : roster
+      ? [selfRow, ...roster.filter((one) => one.email !== email)]
+      : [];
+  const chosenEmail = absence.email || email;
+  const chosenPerson = people.find((one) => one.email === chosenEmail) || selfRow;
+  const forYourself = chosenEmail === email;
 
   useEffect(() => {
     if (!email || !communityId) return;
@@ -174,6 +201,22 @@ export default function AdminAttendance() {
       })
       .catch((e) => setError(e.message));
   }, [email, communityId, refresh]);
+
+  /*
+    The people of this community, for the For-who box: getUsers takes the community_id, reads
+    the addresses off community_members and the names off users, and the page only puts the
+    caller's own details at the very top of what comes back.
+  */
+  useEffect(() => {
+    if (!email || !communityId) return;
+    directory
+      .getUsers(communityId)
+      .then((result) => {
+        setPeopleList({ community_id: communityId, rows: result || [] });
+        setPeopleError("");
+      })
+      .catch((e) => setPeopleError(e.message));
+  }, [email, communityId]);
 
   // One gathering's rows are read only once it has been chosen from this community's list.
   useEffect(() => {
@@ -188,13 +231,16 @@ export default function AdminAttendance() {
   }, [email, communityId, chosen]);
 
   /*
-    Two boxes are typed and neither is whether somebody came, nor which gathering: the name is read
-    back off the session opened for that day. The answer is always not attending and the address is
-    whoever is signed in, both forced by /api/self rather than trusted from this form, which is why
-    there is no Attending box to click. A day that has not come is the expected case: an apology
-    reaches the list before the gathering does. Writing the same notice twice only replaces the
-    reason, because there is one row per person per gathering — and a gathering you are already
-    recorded as being at refuses this write outright, so a yes cannot be talked back into a no.
+    Three boxes are typed — who, a day, a reason — and none of them is whether somebody came, nor
+    which gathering: the name is read back off the session opened for that day. The answer is
+    always not attending, and it travels to /api/leader, which forces the chosen address into the
+    row it speaks about (user_email), the signed-in address into recorded_by, and the no into
+    attend — none of them trusted from this form, which is why there is no Attending box to click.
+    Picking yourself is the same call, and lands the same row the member's own box would. A day
+    that has not come is the expected case: an apology reaches the list before the gathering does.
+    Writing the same notice twice only replaces the reason, because there is one row per person per
+    gathering — and a gathering that person is already recorded as being at refuses this write
+    outright, so a yes cannot be talked back into a no, by anybody, for anybody.
   */
   async function recordAbsence(event) {
     event.preventDefault();
@@ -206,18 +252,17 @@ export default function AdminAttendance() {
     setSaving(true);
     setNoticeError("");
     try {
-      const saved = await attendance.markNotAttending({
+      const saved = await attendance.recordAbsenceFor({
         community_id: communityId,
         event_date: absence.date,
         reason: absence.reason,
+        user_email: chosenEmail,
       });
       const derived = saved?.event_name || "the gathering";
-      setNote(
-        absence.reason.trim()
-          ? `You are recorded as not attending ${derived} on ${pretty(absence.date)} — ${absence.reason.trim()}.`
-          : `You are recorded as not attending ${derived} on ${pretty(absence.date)}.`,
-      );
-      setAbsence({ date: today(), reason: "" });
+      const subject = forYourself ? "You are" : `${displayName(chosenPerson)} is`;
+      const tail = absence.reason.trim() ? ` — ${absence.reason.trim()}` : "";
+      setNote(`${subject} recorded as not attending ${derived} on ${pretty(absence.date)}${tail}.`);
+      setAbsence({ date: today(), reason: "", email: "" });
       setRefresh((count) => count + 1);
     } catch (e) {
       setNote("");
@@ -281,14 +326,24 @@ export default function AdminAttendance() {
           <form className="absent" onSubmit={recordAbsence}>
             <p className="what">Not attending</p>
             <p className="why">
-              Record that you will not be at a gathering, including one whose day has not come
-              yet. The gathering itself is the one the leader has opened a session for on that day,
-              so you only choose the day. A reason is optional, and when you give one it is in your
-              own words — the box offers the usual five, and takes anything you type. This writes
-              not attending only — nothing here marks anybody present, and a gathering you are
-              recorded as being at keeps that record.
+              Record that somebody — you, or anyone in this community — will not be at a
+              gathering, including one whose day has not come yet. The For-who box starts at your
+              own name and searches the community's people by name and surname; the gathering
+              itself is the one the leader has opened a session for on that day, so you only
+              choose the who and the day. A reason is optional, and when you give one it is in
+              your own words — the box offers the usual five, and takes anything you type. This
+              writes not attending only — nothing here marks anybody present, and a gathering that
+              person is recorded as being at keeps that record.
             </p>
             <div className="fields">
+              <label>
+                For who
+                <AbsenceFor
+                  people={people}
+                  value={chosenEmail}
+                  onChange={(mail) => setAbsence({ ...absence, email: mail })}
+                />
+              </label>
               <label>
                 Date
                 <input
@@ -319,8 +374,11 @@ export default function AdminAttendance() {
               </button>
             </div>
             <p className="against">
-              Recorded against {admin.email} in {admin.name || "this community"}.
+              {forYourself
+                ? `Recorded against ${admin.email} in ${admin.name || "this community"}.`
+                : `Recorded for ${displayName(chosenPerson)} in ${admin.name || "this community"}, by ${admin.email}.`}
             </p>
+            {peopleError && <div className="note bad">{peopleError}</div>}
             {noticeError && <div className="note bad">{noticeError}</div>}
             {note && !noticeError && <div className="note">{note}</div>}
           </form>

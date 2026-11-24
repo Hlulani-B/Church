@@ -245,6 +245,12 @@ export default function MemberDashboard() {
             >
               Feedback
             </button>
+            <button
+              type="button"
+              onClick={() => navigate("/servings", { state: { ...heading, role: "member" } })}
+            >
+              Servings
+            </button>
           </div>
         )}
 

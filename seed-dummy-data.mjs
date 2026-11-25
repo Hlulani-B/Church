@@ -42,6 +42,12 @@
   own and an answer under at least one function. It only fills what is missing — a person the passes
   above already covered is left exactly as they are — so it can be run on its own after adding another
   name to PEOPLE.
+
+  The sixth test seeds the two extra tables the dashboards read for the people who never open the app:
+  a handful of names in extra_members and the gatherings recorded against them in extra_event, spread
+  over the recent Sundays — some came, some sent word they would not with a reason, some only had
+  their name written down. It clears just these fellowships' extra rows before writing, so it too can
+  be run on its own without stacking a second crowd.
 */
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
@@ -304,7 +310,13 @@ describe('seed dummy data (all tables, kept in DB)', () => {
       .select('community_id, name')
       .in('name', ['Grace Point Fellowship', 'Stream of Hope Fellowship'])
     for (const one of oldCommunities || []) {
-      for (const table of ['testimony', 'event', 'session', 'servings', 'community_members']) {
+      for (const table of [
+        'testimony', 'event', 'session', 'servings', 'community_members',
+        // The extra tables hang off the same community. Whether or not those keys cascade, emptying
+        // the gatherings and then the members before the community itself is deleted below keeps a
+        // re-run from tripping a foreign key on leftover extra rows from the last one.
+        'extra_event', 'extra_members',
+      ]) {
         const { error } = await db.from(table).delete().eq('community_id', one.community_id)
         if (error) throw new Error(`cleanup ${table}: ${error.message}`)
       }
@@ -1518,4 +1530,117 @@ describe('seed dummy data (all tables, kept in DB)', () => {
     expect(kinds.pdf).toBeGreaterThan(0)
     expect(gaps).toEqual([])
   }, 300_000)
+
+  /*
+    A sixth test seeds the two extra tables the dashboards read for the people who never open the app:
+    the names in extra_members and the gatherings recorded against them in extra_event. It is the dummy
+    half of that feature, so an Extra members card and the extra register have rows to show without a
+    leader typing them in by hand first.
+
+    Like the servings rows in the first test, this reaches Supabase straight through the service-key
+    client rather than the server's own routes — a row at a time over HTTP would be a round trip per
+    line, and these are plain inserts. member_id and event_id are drawn by the database, so they are
+    read back from the insert that made them and used to key the gatherings on.
+
+      npx vitest run --config vitest.encryption.config.js seed-dummy-data -t "extra members"
+  */
+  it('seeds the extra members who never join the app and their gatherings', async () => {
+    const { data: fellowships } = await db
+      .from('community')
+      .select('community_id, name')
+      .in('name', ['Grace Point Fellowship', 'Stream of Hope Fellowship'])
+      .order('name')
+    if (!fellowships?.length) throw new Error('run the first test before this one')
+    const ids = fellowships.map((one) => one.community_id)
+    const idOf = Object.fromEntries(fellowships.map((one) => [one.name, one.community_id]))
+
+    /*
+      A fresh start for just these two fellowships. The gatherings go before the members, because an
+      event's member_id points at a member and those rows lean on them; whether or not that key
+      cascades, this order never leaves a dangling reference. Then both are written anew below, so a
+      second run replaces the crowd rather than doubling it.
+    */
+    const { error: clearEvents } = await db.from('extra_event').delete().in('community_id', ids)
+    if (clearEvents) throw new Error(`cleanup extra_event: ${clearEvents.message}`)
+    const { error: clearMembers } = await db.from('extra_members').delete().in('community_id', ids)
+    if (clearMembers) throw new Error(`cleanup extra_members: ${clearMembers.message}`)
+
+    // Who keeps no app but is still counted — four in Grace Point, three in Stream of Hope. The leader
+    // who added each is a real user, so created_by is an address already on that fellowship's roster.
+    const EXTRA_PEOPLE = [
+      { community: 'Grace Point Fellowship', name: 'Nomsa', surname: 'Dube', by: 'thoko.mahlangu@example.com' },
+      { community: 'Grace Point Fellowship', name: 'Felix', surname: 'Mokhtari', by: 'thoko.mahlangu@example.com' },
+      { community: 'Grace Point Fellowship', name: 'Anele', surname: 'Sithole', by: 'sibusiso.gumede@example.com' },
+      { community: 'Grace Point Fellowship', name: 'Sipho', surname: 'Nkosi', by: 'sibusiso.gumede@example.com' },
+      { community: 'Stream of Hope Fellowship', name: 'Rohan', surname: 'Pretorius', by: 'thoko.mahlangu@example.com' },
+      { community: 'Stream of Hope Fellowship', name: 'Zodwa', surname: 'Mkhize', by: 'zanele.kunene@example.com' },
+      { community: 'Stream of Hope Fellowship', name: 'Elias', surname: 'Tefu', by: 'zanele.kunene@example.com' },
+    ]
+
+    const { data: members, error: mErr } = await db
+      .from('extra_members')
+      .insert(
+        EXTRA_PEOPLE.map((one) => ({
+          community_id: idOf[one.community],
+          name: one.name,
+          surname: one.surname,
+          created_by: one.by,
+        })),
+      )
+      .select('member_id, community_id, name, surname, created_by')
+    if (mErr) throw new Error(`extra_members: ${mErr.message}`)
+
+    /*
+      The gatherings to write a name against, over the recent Sundays so the register reads like real
+      services. Each row is one of the three answers the column holds: they came, they sent word they
+      would not (with a reason off the five the column allows), or their name was only written down for
+      the day. Which of the three is folded from the member and the day, so a second run writes the same
+      answer for the same row rather than a fresh crowd.
+    */
+    const GATHERINGS = ['Sunday Service', 'Prayer Meeting', 'Bible Study', 'Youth Fellowship']
+    const REASONS = ['Work', 'Transport', 'Sick', 'Family', 'Other']
+    const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`)
+    const sundayBack = (n) => {
+      const d = new Date(today.getTime() - n * 7 * 86_400_000)
+      d.setUTCDate(d.getUTCDate() - d.getUTCDay())
+      return d.toISOString().slice(0, 10)
+    }
+
+    const events = []
+    for (const [k, member] of members.entries()) {
+      const count = 2 + (k % 2)
+      for (let at = 0; at < count; at++) {
+        const came = roll(k + 1, at + 1, 53)
+        events.push({
+          community_id: member.community_id,
+          member_id: member.member_id,
+          event_name: GATHERINGS[(k + at) % GATHERINGS.length],
+          event_date: sundayBack(at + 1),
+          attend: came < 0.45 ? true : came < 0.8 ? false : null,
+          reason: came >= 0.45 && came < 0.8 ? REASONS[(k + at) % REASONS.length] : null,
+          recorded_by: member.created_by,
+        })
+      }
+    }
+    const { error: eErr } = await db.from('extra_event').insert(events)
+    if (eErr) throw new Error(`extra_event: ${eErr.message}`)
+
+    console.log(`extra_members: ${members.length} people who never use the app`)
+    console.log(`extra_event: ${events.length} gatherings recorded for them`)
+
+    // Read it back the way the extra register does — each gathering joined to the member it belongs to
+    // — and assert that no row came out nameless and that all three kinds of answer reached the table.
+    const { data: joined, error: jErr } = await db
+      .from('extra_event')
+      .select('event_id, community_id, member_id, attend, reason, extra_members(name, surname)')
+      .in('community_id', ids)
+    if (jErr) throw new Error(`extra_event read: ${jErr.message}`)
+    expect(joined.length).toBe(events.length)
+    expect(joined.every((one) => one.extra_members?.name)).toBe(true)
+
+    const tally = (want) => joined.filter((one) => one.attend === want).length
+    console.log(
+      `  came: ${tally(true)}, sent word they would not: ${tally(false)}, written down only: ${tally(null)}`,
+    )
+  }, 60_000)
 })

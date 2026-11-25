@@ -9,6 +9,7 @@ import SessionLive from "../components/session_live.jsx";
 import AvailableFunctions from "../components/available_functions.jsx";
 import ExtraMembers from "../components/extra_members.jsx";
 import ExtraEvent from "../components/extra_event.jsx";
+import ExtraServings from "../components/extra_servings.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
@@ -369,6 +370,7 @@ export default function LeaderDashboard() {
 
           <ExtraMembers communityId={communityId} email={email} />
           <ExtraEvent communityId={communityId} email={email} />
+          <ExtraServings communityId={communityId} />
           </>
         )}
       </main>

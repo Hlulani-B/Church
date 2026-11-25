@@ -1,22 +1,22 @@
-import { createClient } from '@supabase/supabase-js'
 import { encryptText } from './crypto.js'
 import { prepareTestimonyFile, uploadTestimonyFile } from './testimony_files.js'
 
 /*
   The one page function for the extra_* tables — the people a leader or an admin lists who never
-  join the app, and everything recorded about them (attendance, testimonies, function answers and
-  payments).
+  join the app, and everything recorded about them (attendance, testimonies, function answers,
+  payments and servings).
 
   Like servings, these rows are written and read server-side by the standalone Express server
   (server/src/routes/extra_*.js), which holds the service key. This only reaches those endpoints
   over HTTP at the base url kept in the app's env as VITE_SERVINGS_API_URL — the same server the
   servings feature already talks to, on the /extra-* prefixes its router mounts.
 
-  The one thing that stays in the browser is the testimony body, exactly as the real testimony
-  table already does it: words are encrypted with VITE_TESTIMONY_ENC_KEY before they are handed
-  over, and a chosen file runs through the best-effort lossless compression helper and uploads to
-  the public `kopano` bucket, so the value stored against an extra testimony is either `enc:v1:`
-  ciphertext or a public file URL — never plain words. The server stores and returns it untouched.
+  The one thing that stays in the browser is the testimony body and a receipt, exactly as the real
+  testimony table already does it: words are encrypted with VITE_TESTIMONY_ENC_KEY before they are
+  handed over, and a chosen file runs through the best-effort lossless compression helper and is
+  uploaded to the public `kopano` bucket through the server (upload.js), which writes it with the
+  service key. The value stored against an extra testimony is therefore either `enc:v1:` ciphertext
+  or a public file URL — never plain words — and the server stores and returns it untouched.
 */
 
 const API_URL = import.meta.env.VITE_SERVINGS_API_URL
@@ -61,22 +61,6 @@ function query(values) {
   }
   const asString = params.toString()
   return asString ? `?${asString}` : ''
-}
-
-/*
-  The Supabase client is here only for storage — uploading a testimony file to the public bucket.
-  The anon key is public and inlined by Vite, and auth is switched off so no GoTrueClient probes
-  the popup window. Everything that reads or writes a row goes through requestJson, not this client.
-*/
-let storage
-function storageClient() {
-  if (!storage) {
-    const url = import.meta.env.VITE_SUPABASE_URL
-    const key = import.meta.env.VITE_SUPABASE_ANON_KEY
-    if (!url || !key) throw new Error('VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are not set in .env.local')
-    storage = createClient(url, key, { auth: { persistSession: false, detectSessionInUrl: false } })
-  }
-  return storage
 }
 
 export class ExtraFetch {
@@ -177,7 +161,7 @@ export class ExtraFetch {
       stored = await encryptText(words)
     } else if (kind === 'image' || kind === 'pdf' || kind === 'docx') {
       const prepared = await prepareTestimonyFile(file)
-      stored = await uploadTestimonyFile(storageClient(), prepared.blob, {
+      stored = await uploadTestimonyFile(prepared.blob, {
         kind: prepared.kind,
         ownerEmail: recorded_by || 'extra',
         date,
@@ -273,7 +257,7 @@ export class ExtraFetch {
     const now = new Date()
     const pad = (one) => String(one).padStart(2, '0')
     const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
-    return uploadTestimonyFile(storageClient(), prepared.blob, {
+    return uploadTestimonyFile(prepared.blob, {
       kind: prepared.kind,
       ownerEmail: uploaded_by || 'extra',
       date,
@@ -312,6 +296,36 @@ export class ExtraFetch {
   async removeFunctionPaid({ function_id, member_id }) {
     if (!function_id || !member_id) throw new Error('function_id and member_id are required')
     return requestJson('/extra-function-paid', { method: 'DELETE', body: { function_id, member_id } })
+  }
+
+  /*
+    extra_servings — the serving (role) an extra member holds in a community. A person who never uses
+    the app is listed in extra_members and given a serving here, exactly as the real `servings` table
+    gives one to a member's address. `role` is a free word and the row is keyed by its own id, so a
+    member may hold more than one serving.
+  */
+  async addServing({ member_id, community_id, role }) {
+    if (!member_id) throw new Error('member_id is required')
+    if (!community_id) throw new Error('community_id is required')
+    return requestJson('/extra-servings', {
+      method: 'POST',
+      body: { member_id, community_id, role },
+    })
+  }
+
+  async getServings(community_id, member_id) {
+    if (!community_id) throw new Error('community_id is required')
+    return requestJson(`/extra-servings${query({ community_id, member_id })}`)
+  }
+
+  async updateServing(id, changes) {
+    if (!id) throw new Error('id is required')
+    return requestJson(`/extra-servings/${id}`, { method: 'PATCH', body: changes })
+  }
+
+  async removeServing(id) {
+    if (!id) throw new Error('id is required')
+    return requestJson(`/extra-servings/${id}`, { method: 'DELETE' })
   }
 }
 

@@ -8,9 +8,11 @@
   limit — a file that cannot be shrunk losslessly still gets uploaded whole.
 
   The bucket is public-read, so the stored value is the plain public URL; no signed URLs needed.
+  The upload itself goes through the server, not the browser's anon client, so a bucket with row
+  level security still takes the file — see upload.js.
 */
 
-const BUCKET = 'kopano'
+import { uploadViaServer } from './upload.js'
 
 const EXTENSIONS = {
   'image/png': 'png',
@@ -60,18 +62,11 @@ function folder(email) {
 }
 
 /*
-  Upload and return the public URL. `client` is the same anon-key Supabase client the testimonies
-  page already uses, so the write follows whatever Storage policy is set on `kopano`. The path is
-  namespaced by author and day so files never collide.
+  Upload the prepared file and return its public URL. The bytes are handed to the server, which puts
+  them in the bucket with the service key, so the write stands outside whatever storage policy the
+  bucket carries. The path is namespaced by author and day so files never collide.
 */
-export async function uploadTestimonyFile(client, blob, { kind, ownerEmail, date }) {
+export async function uploadTestimonyFile(blob, { kind, ownerEmail, date }) {
   const path = `testimonies/${folder(ownerEmail)}/${date || 'undated'}/${crypto.randomUUID()}.${extensionFor(blob, kind)}`
-  const { error } = await client.storage
-    .from(BUCKET)
-    .upload(path, blob, {
-      contentType: blob.type || 'application/octet-stream',
-      upsert: false,
-    })
-  if (error) throw new Error(error.message)
-  return client.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
+  return uploadViaServer(path, blob)
 }

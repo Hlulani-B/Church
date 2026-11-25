@@ -131,6 +131,38 @@ function sharedClient(url, key) {
   return client
 }
 
+/*
+  The rows are READ here with the anon key above — a permissive SELECT policy lets that through — but
+  they are WRITTEN through the standalone server (server/src/routes/testimony.js), which holds the
+  service key. With row level security on `testimony`, an anon INSERT has no policy to satisfy and the
+  database refuses it with "new row violates row-level security policy", which is exactly what saving
+  a testimony used to hit. Only the finished, opaque values cross over: the words are encrypted and a
+  file is uploaded (through upload.js) here in the browser first, so the at-rest encryption stays
+  entirely client-side and the server only ever stores what it is handed.
+*/
+const API_URL = import.meta.env.VITE_SERVINGS_API_URL
+
+async function requestJson(path, { method = 'GET', body } = {}) {
+  if (!API_URL) {
+    throw new Error('VITE_SERVINGS_API_URL is not set, so a testimony cannot be saved.')
+  }
+  const res = await fetch(`${API_URL}${path}`, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  let payload = null
+  try {
+    payload = await res.json()
+  } catch {
+    // A reply that was not JSON is handled just below, alongside the status.
+  }
+  if (!res.ok) {
+    throw new Error(payload?.message || payload?.error || `The server refused the request (${res.status}).`)
+  }
+  return payload
+}
+
 export class TestimoniesFetch {
   constructor(
     url = import.meta.env.VITE_SUPABASE_URL,
@@ -273,7 +305,7 @@ export class TestimoniesFetch {
       stored = await encryptText(words)
     } else if (kind === 'image' || kind === 'pdf' || kind === 'docx') {
       const prepared = await prepareTestimonyFile(file)
-      stored = await uploadTestimonyFile(this.client, prepared.blob, {
+      stored = await uploadTestimonyFile(prepared.blob, {
         kind: prepared.kind,
         ownerEmail: email,
         date,
@@ -288,9 +320,9 @@ export class TestimoniesFetch {
     const everyone = allow_all === true || String(allow_all).toLowerCase() === 'true'
     const authorised = everyone ? [] : Array.isArray(authorise) ? authorise : []
 
-    const { data, error } = await this.client
-      .from('testimony')
-      .insert({
+    const written = await requestJson('/testimony', {
+      method: 'POST',
+      body: {
         community_id,
         user_email: encryptedEmail,
         date,
@@ -298,13 +330,12 @@ export class TestimoniesFetch {
         type: kind,
         allow_all: everyone,
         authorise: authorised,
-      })
-      .select('testimony_id, user_email, date, body')
-    if (error) throw new Error(error.message)
-    if (!data?.length) {
+      },
+    })
+    if (!written?.testimony_id) {
       throw new Error('The testimony did not come back, so it may not have been written.')
     }
-    return shape(data[0])
+    return shape(written)
   }
 
   /*
@@ -316,15 +347,14 @@ export class TestimoniesFetch {
     if (!testimony_id) throw new Error('testimony_id is required')
     const everyone = allow_all === true || String(allow_all).toLowerCase() === 'true'
     const authorised = everyone ? [] : Array.isArray(authorise) ? authorise : []
-    const { data, error } = await this.client
-      .from('testimony')
-      .update({ allow_all: everyone, authorise: authorised })
-      .eq('testimony_id', testimony_id)
-      .select('testimony_id, allow_all, authorise')
-      .maybeSingle()
-    if (error) throw new Error(error.message)
-    if (!data) throw new Error('That testimony could not be found, so its readers were not changed.')
-    return data
+    const updated = await requestJson(`/testimony/${testimony_id}`, {
+      method: 'PATCH',
+      body: { allow_all: everyone, authorise: authorised },
+    })
+    if (!updated?.testimony_id) {
+      throw new Error('That testimony could not be found, so its readers were not changed.')
+    }
+    return updated
   }
 
   /*

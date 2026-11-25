@@ -6,6 +6,7 @@ import { decryptText } from "../page_functions/crypto.js";
 import LeaderMenu from "./menu.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
 import BackToCommunities from "../components/back.jsx";
+import ExtraTestimonies from "../components/extra_testimonies.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
 const accounts = new Auth();
@@ -619,6 +620,8 @@ export default function LeaderTestimonies() {
             ) : null}
           </>
         )}
+
+        {communityId && <ExtraTestimonies communityId={communityId} email={email} privileged />}
 
         <button className="back" type="button" onClick={() => open("/leader-dashboard")}>
           Back to the dashboard

@@ -150,6 +150,7 @@ export default function FunctionsPage() {
             key={chosen.id}
             community_id={communityId}
             function_id={chosen.id}
+            email={admin.email}
             onBack={() => setChosen(null)}
           />
         ) : (

@@ -7,6 +7,8 @@ import BackToCommunities from "../components/back.jsx";
 import AttendanceControl from "../components/attendance_control.jsx";
 import SessionLive from "../components/session_live.jsx";
 import AvailableFunctions from "../components/available_functions.jsx";
+import ExtraMembers from "../components/extra_members.jsx";
+import ExtraEvent from "../components/extra_event.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
 import { adminState, rememberAdmin } from "./state.js";
 import servings from "../page_functions/servings.js";
@@ -516,6 +518,7 @@ export default function AdminDashboard() {
             click a community, and its members and join code open on this page.
           </div>
         ) : (
+          <>
           <div className="grid">
             <section className="roster">
               <h3>
@@ -665,6 +668,10 @@ export default function AdminDashboard() {
               </p>
             </section>
           </div>
+
+          <ExtraMembers communityId={communityId} email={email} />
+          <ExtraEvent communityId={communityId} email={email} />
+          </>
         )}
       </main>
 

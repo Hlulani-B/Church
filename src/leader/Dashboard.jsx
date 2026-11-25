@@ -7,6 +7,8 @@ import BackToCommunities from "../components/back.jsx";
 import AttendanceControl from "../components/attendance_control.jsx";
 import SessionLive from "../components/session_live.jsx";
 import AvailableFunctions from "../components/available_functions.jsx";
+import ExtraMembers from "../components/extra_members.jsx";
+import ExtraEvent from "../components/extra_event.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
@@ -265,8 +267,9 @@ export default function LeaderDashboard() {
             community, and its people and its attendance open on these pages.
           </div>
         ) : (
-          <section className="roster">
-            <h3>
+          <>
+            <section className="roster">
+              <h3>
               Members
               {rows.length ? <span className="count">{rows.length}</span> : null}
             </h3>
@@ -363,6 +366,10 @@ export default function LeaderDashboard() {
                 : ""}
             </p>
           </section>
+
+          <ExtraMembers communityId={communityId} email={email} />
+          <ExtraEvent communityId={communityId} email={email} />
+          </>
         )}
       </main>
     </div>

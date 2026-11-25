@@ -3,6 +3,8 @@ import { ChurchFunctionsFetch } from "../page_functions/church_functions.js";
 import { UserFetch } from "../page_functions/user.js";
 import AbsenceFor, { displayName, UNNAMED_PERSON } from "./absence_for.jsx";
 import ProofViewer from "./proof_viewer.jsx";
+import ExtraFunctionAttending from "./extra_function_attending.jsx";
+import ExtraFunctionPaid from "./extra_function_paid.jsx";
 import LoadingBoxes from "./loading_boxes.jsx";
 import { named, pretty } from "./view_functions.jsx";
 
@@ -142,7 +144,7 @@ const dash = <span className="free">—</span>;
 */
 const UNNAMED_LEADER = "A leader this fellowship has not named";
 
-export default function IndividualFunction({ community_id, function_id, onBack }) {
+export default function IndividualFunction({ community_id, function_id, onBack, email }) {
   const [detail, setDetail] = useState(null);
   const [peopleList, setPeopleList] = useState([]);
   const [error, setError] = useState("");
@@ -405,6 +407,14 @@ export default function IndividualFunction({ community_id, function_id, onBack }
           are listed under the two sections above only by their attendance, so somebody should check
           where they came from.
         </p>
+      )}
+
+      {/* The people who never joined cannot answer for themselves on the register above, so their
+          standing under this plan is stated here: whether they are coming, and — when the function
+          costs something — what they owe, paid and proved. */}
+      <ExtraFunctionAttending communityId={community_id} functionId={function_id} email={email} />
+      {paidFunction && (
+        <ExtraFunctionPaid communityId={community_id} functionId={function_id} email={email} />
       )}
     </div>
   );

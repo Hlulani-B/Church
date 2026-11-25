@@ -6,6 +6,7 @@ import { decryptText } from "../page_functions/crypto.js";
 import Menu from "../components/menu.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
 import BackToCommunities from "../components/back.jsx";
+import ExtraTestimonies from "../components/extra_testimonies.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
 const accounts = new Auth();
@@ -49,6 +50,24 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au .ghost:disabled{opacity:.45;cursor:default}
 .au .back{display:inline-block;margin:36px 0 0;font-size:15px;font-weight:600;border-bottom:1px solid #111;text-decoration:none;cursor:pointer;background:none;border-width:0 0 1px;border-style:solid;padding:0}
 
+/* The same popup the leader and admin open to record a testimony: a veil, a card, Escape or a
+   click outside the card to leave it. */
+.au .veil{position:fixed;inset:0;background:rgba(20,20,20,.5);display:flex;align-items:center;justify-content:center;padding:24px;z-index:20}
+.au .pop{background:#fff;border-radius:2px;width:100%;max-width:560px;max-height:calc(100vh - 48px);overflow:auto;padding:26px 28px 28px;box-shadow:0 20px 44px rgba(0,0,0,.28)}
+.au .pop h2{font-size:24px;margin:0 0 6px;text-transform:none}
+.au .pop .who{color:var(--muted);font-size:14px;margin:0}
+.au .pop label{display:flex;flex-direction:column;gap:6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:18px 0 0}
+.au .pop input,.au .pop textarea,.au .pop select{font:inherit;font-size:16px;letter-spacing:normal;text-transform:none;font-weight:400;color:var(--text);background:#fff;border:1px solid #bdbdbd;border-radius:2px;padding:10px 12px;min-width:0}
+.au .pop input:focus,.au .pop textarea:focus{outline:none;border-color:#111}
+.au .pop textarea{min-height:160px;resize:vertical;line-height:1.55}
+.au .pop .fail{color:#a11111;font-size:14px;margin:16px 0 0}
+.au .pop .row{display:flex;justify-content:flex-end;gap:10px;margin:26px 0 0}
+.au .pop .go{background:#111;color:#fff;border:0;border-radius:2px;padding:12px 22px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
+.au .pop .go:disabled{opacity:.55;cursor:default}
+
+/* A member gets one write: their own testimony, so the button that opens it stands out. */
+.au .add{background:#111;color:#fff;border:1px solid #111;border-radius:2px;padding:12px 22px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
+
 @media (max-width:860px){
   .au .bar{padding:14px 20px}
   .au .main{padding:36px 24px 72px}
@@ -62,6 +81,13 @@ function pretty(date) {
   return Number.isNaN(read.getTime())
     ? date
     : read.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+// Today, in the shape the date box and the date column both want.
+function today() {
+  const now = new Date();
+  const pad = (one) => String(one).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
 /*
@@ -124,6 +150,16 @@ export default function MemberTestimonies() {
   const [error, setError] = useState("");
   // The hundred on screen, tagged with the community it was read for.
   const [offset, setOffset] = useState(0);
+  /*
+    The popup the add button opens: the day, the type and the words or file. `refresh` is what
+    makes the list read itself again once a testimony has been written, so the new row turns up
+    without a reload.
+  */
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState({ date: "", body: "", type: "text", file: null, allow_all: true, authorise: "" });
+  const [saving, setSaving] = useState(false);
+  const [draftError, setDraftError] = useState("");
+  const [refresh, setRefresh] = useState(0);
 
   const admin = adminState({ email: signedIn?.email }, route);
   const communityId = admin.community_id;
@@ -156,7 +192,64 @@ export default function MemberTestimonies() {
         setError("");
       })
       .catch((e) => setError(e.message));
-  }, [email, communityId, offset]);
+  }, [email, communityId, offset, refresh]);
+
+  function openAdd() {
+    setDraft({ date: today(), body: "", type: "text", file: null, allow_all: true, authorise: "" });
+    setDraftError("");
+    setAdding(true);
+  }
+
+  function closeAdd() {
+    if (saving) return;
+    setAdding(false);
+  }
+
+  /*
+    Only the day, the type and the words or file are chosen here. The address the row is written
+    against is the one signed in on this page and the community is the one on screen, both of
+    which addTestimony takes from the caller rather than the form.
+  */
+  async function saveTestimony(event) {
+    event.preventDefault();
+    setSaving(true);
+    setDraftError("");
+    try {
+      const authorise = String(draft.authorise || "")
+        .split(",")
+        .map((addr) => addr.trim())
+        .filter(Boolean);
+      const one = await testimonies.addTestimony({
+        community_id: communityId,
+        email,
+        date: draft.date,
+        type: draft.type,
+        body: draft.body,
+        file: draft.file,
+        allow_all: draft.allow_all,
+        authorise: draft.allow_all ? [] : authorise,
+      });
+      setAdding(false);
+      setFetched(null);
+      setRefresh((count) => count + 1);
+      return one;
+    } catch (e) {
+      setDraftError(e.message);
+    } finally {
+      setSaving(false);
+    }
+    return null;
+  }
+
+  // Escape leaves the popup, unless the write is still on its way.
+  useEffect(() => {
+    if (!adding) return undefined;
+    function onKey(event) {
+      if (event.key === "Escape" && !saving) setAdding(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [adding, saving]);
 
   const page = fetched?.community_id === communityId ? fetched : null;
   const first = page && page.shown ? page.from + 1 : 0;
@@ -215,6 +308,12 @@ export default function MemberTestimonies() {
           </div>
         ) : (
           <>
+            <div className="row">
+              <button className="add" type="button" onClick={openAdd}>
+                Add a testimony
+              </button>
+            </div>
+
             {error && <div className="note bad">{error}</div>}
             {!error && !page && <LoadingBoxes count={4} words="Reading what this community has shared…" />}
 
@@ -255,6 +354,8 @@ export default function MemberTestimonies() {
                 ) : null}
               </>
             )}
+
+            <ExtraTestimonies communityId={communityId} email={email} privileged={false} />
           </>
         )}
 
@@ -266,6 +367,103 @@ export default function MemberTestimonies() {
           Back to the dashboard
         </button>
       </main>
+
+      {adding && (
+        <div className="veil" role="dialog" aria-modal="true" aria-label="Add a testimony" onClick={closeAdd}>
+          <form
+            className="pop"
+            onSubmit={saveTestimony}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className="serif">Add a testimony</h2>
+            <p className="who">
+              Recorded against {email} in {admin.name || "this community"}.
+            </p>
+
+            <label>
+              Date
+              <input
+                type="date"
+                value={draft.date}
+                onChange={(event) => setDraft({ ...draft, date: event.target.value })}
+              />
+            </label>
+
+            <label>
+              Type
+              <select
+                value={draft.type}
+                onChange={(event) => setDraft({ ...draft, type: event.target.value })}
+              >
+                <option value="text">Text</option>
+                <option value="image">Image</option>
+                <option value="pdf">PDF</option>
+                <option value="docx">Docx</option>
+              </select>
+            </label>
+
+            {draft.type === "text" ? (
+              <label>
+                Testimony
+                <textarea
+                  value={draft.body}
+                  placeholder="What did God do?"
+                  onChange={(event) => setDraft({ ...draft, body: event.target.value })}
+                />
+              </label>
+            ) : (
+              <label>
+                {draft.type === "image" ? "Image" : draft.type === "pdf" ? "PDF" : "Document"}
+                <input
+                  type="file"
+                  accept={
+                    draft.type === "image"
+                      ? "image/*"
+                      : draft.type === "pdf"
+                        ? "application/pdf"
+                        : ".docx"
+                  }
+                  onChange={(event) => setDraft({ ...draft, file: event.target.files?.[0] || null })}
+                />
+              </label>
+            )}
+
+            <label>
+              Allow everybody to read this?
+              <select
+                value={draft.allow_all ? "yes" : "no"}
+                onChange={(event) => setDraft({ ...draft, allow_all: event.target.value === "yes" })}
+              >
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+
+            {!draft.allow_all && (
+              <label>
+                Authorise (emails, comma-separated)
+                <input
+                  type="text"
+                  value={draft.authorise}
+                  placeholder="someone@example.com, another@example.com"
+                  onChange={(event) => setDraft({ ...draft, authorise: event.target.value })}
+                />
+              </label>
+            )}
+
+            {draftError && <p className="fail">{draftError}</p>}
+
+            <div className="row">
+              <button className="ghost" type="button" onClick={closeAdd} disabled={saving}>
+                Cancel
+              </button>
+              <button className="go" type="submit" disabled={saving}>
+                {saving ? "Saving…" : "Save testimony"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

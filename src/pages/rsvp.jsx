@@ -6,6 +6,7 @@ import { uploadProof } from "../page_functions/function_files.js";
 import ProofViewer from "../components/proof_viewer.jsx";
 import { named, pretty } from "../components/view_functions.jsx";
 import Menu from "../components/menu.jsx";
+import LoadingBoxes from "../components/loading_boxes.jsx";
 import BackToCommunities, { BackToDashboard } from "../components/back.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
@@ -380,7 +381,7 @@ export default function RsvpPage() {
             <div className="note bad">{error}</div>
           </>
         ) : !one ? (
-          <p className="sub">Loading…</p>
+          <LoadingBoxes count={2} words="Reading this function…" />
         ) : (
           <section className="rs">
             {back}
@@ -416,7 +417,7 @@ export default function RsvpPage() {
 
             <div className="stand">
               <h2>Where you stand</h2>
-              {you ? standing(you, one, asks) : <p>Loading…</p>}
+              {you ? standing(you, one, asks) : <LoadingBoxes count={1} words="Reading your answer…" />}
             </div>
 
             <form onSubmit={save}>

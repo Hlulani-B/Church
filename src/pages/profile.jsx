@@ -4,6 +4,7 @@ import { Auth } from "../functions/auth.js";
 import { UserFetch } from "../page_functions/user.js";
 import { CommunityFetch } from "../page_functions/community.js";
 import Menu from "../components/menu.jsx";
+import LoadingBoxes from "../components/loading_boxes.jsx";
 import BackToCommunities from "../components/back.jsx";
 
 const accounts = new Auth();
@@ -257,7 +258,9 @@ export default function ProfilePage() {
           in that community is the one for.
         </p>
 
-        {!communitiesLoaded && <p className="sub">Reading…</p>}
+        {!communitiesLoaded && (
+          <LoadingBoxes count={2} words="Reading the communities you belong to…" />
+        )}
         {communitiesLoaded && communities === null && (
           <div className="empty">
             The list did not come back. It will be there again the next time this page loads;

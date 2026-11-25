@@ -4,6 +4,7 @@ import { Auth } from "../functions/auth.js";
 import { TestimoniesFetch } from "../page_functions/testimonies.js";
 import { decryptText } from "../page_functions/crypto.js";
 import Menu from "../components/menu.jsx";
+import LoadingBoxes from "../components/loading_boxes.jsx";
 import BackToCommunities from "../components/back.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
@@ -215,7 +216,7 @@ export default function MemberTestimonies() {
         ) : (
           <>
             {error && <div className="note bad">{error}</div>}
-            {!error && !page && <p className="tally">Loading…</p>}
+            {!error && !page && <LoadingBoxes count={4} words="Reading what this community has shared…" />}
 
             {page && !error && (
               <>

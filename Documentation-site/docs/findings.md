@@ -16,13 +16,16 @@ were made to the live database during the audit.
 | 8 | An admin screen could show another community's roster | Major | Tag every read with the community that answered |
 | 9 | The four digits never reached the leader who opened the check-in | Major | Decide `mine` off the row, not off the object being built — **[Fixed]** |
 | 10 | One button handed every feedback author's address to whoever downloaded the pile | Major | Name the rows at the read, and close the last fallbacks — **[Fixed]** |
+| 11 | Pages claimed a community was empty while its read was still running | Major | `null` means reading, `[]` means empty, and boxes in the gap — **[Fixed]** |
 
 Findings 1 to 6 are the 2026-11-13 data-layer audit. Findings 7 and 8 are the sign-in path
 and the admin screens, both found on 2026-11-14; 7 is marked **[Fixed]** below. Finding 9 is
 not from an audit at all — it was found on 2026-11-25 by the test that specifies it, which had
 been failing quietly while the suite was read as a whole. Finding 10 came from the same day's
 sweep, taken once the rule about addresses was written down as a rule for the whole app rather
-than a rule for the page being looked at.
+than a rule for the page being looked at. Finding 11 is the same day again, and is the reason
+the sweep was asked for: a list that is still arriving was drawn exactly like a list that came
+back with nothing in it.
 
 ## 1. Attendance and testimony data is world-readable and world-writable
 
@@ -301,6 +304,46 @@ both a screen and a file, the check belongs at the read: a page can be rewritten
 added, and tomorrow's export will happily carry whatever today's response shipped. Keeping the caller's
 own address in the answer is the part that needs stating out loud, too — otherwise the honest reading of
 "nobody sees an address" is a page that cannot tell a reader whose note is theirs.
+
+## 11. Pages said a community was empty a second before its rows arrived
+
+**Found.** On 2026-11-25, asked why the servings and community screens kept reporting that there was
+nothing there. Every list here is an array in state, and an array that has not been filled is drawn the
+same as an array that came back empty. `src/pages/community.jsx` started `mine` at `[]` and so printed
+*You are not in a community yet* over the read that was about to answer it, and `src/pages/servings.jsx`
+did the same damage with *Nobody is listed under servings for this community yet*. Two more —
+`src/components/view_functions.jsx` and `src/pages/available_functions.jsx` — had already learned the
+difference and hold `null` until the read lands, but drew nothing at all in the gap, which a person
+reads the same way as an empty answer. The screens that did say something said the bare word
+`Loading…` in a paragraph: the two dashboards' rosters, the attendance register on both the admin
+and the leader page, the three testimony pages, the opened function, the RSVP, the feedback pile and
+the profile's community list. `src/pages/servings.jsx` had a second instance of the same mistake in
+its failure path, where a
+rejected read set the error and left the empty sentence standing beside it.
+
+**Cause.** State initialised to the shape of an answer rather than the shape of a question. A list
+starting at `[]` is a claim that the read finished, made before the read has even been sent, and the
+sentence under it is a statement about a fellowship that nobody has asked about yet. Nothing in the
+data layer caused this and no request was slow: the pages were simply unable to tell "none" from
+"not yet", because the value they held could not express the second one.
+
+**Fix.** One component, `src/components/loading_boxes.jsx`: pale boxes in the shape of the rows or
+cards that are coming, with one line of words above them for anybody who cannot see a shape. Every
+list above now holds `null` while its first read is out and an array once it has landed, so the
+sentence about absence is only ever printed by a page that is entitled to say it; the failure path
+settles to `[]` with the error note, never to a claim about who is missing. Servings and community
+keep the rows already on screen through a refresh rather than going back to `null`, so saving a role
+does not flash the boxes. The one place the boxes genuinely replace a wrong claim about an export —
+the feedback pile's own introduction still promising that a downloaded file carries addresses — was
+corrected in the same pass, because Finding 10 had already made that sentence untrue.
+
+**Lesson.** An empty state is an assertion, and an assertion needs the read to have finished before a
+page may make it. The cheapest way to keep the two apart is to let the state hold three things rather
+than two — unread, empty, full — because a boolean or an array cannot say *waiting*, and a component
+named after the waiting is what stops the next page from inventing its own sentence. It is worth
+noticing how long this survived: a dozen screens had already been fixed one at a time, which
+is why the wording varied from screen to screen, and none of them had fixed the two pages that were
+actually lying.
 
 ## How this was tested
 

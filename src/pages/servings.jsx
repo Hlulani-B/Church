@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
 import servings from "../page_functions/servings.js";
 import Menu from "../components/menu.jsx";
+import LoadingBoxes from "../components/loading_boxes.jsx";
 import BackToCommunities, { BackToDashboard } from "../components/back.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
@@ -144,7 +145,10 @@ export default function ServingsPage() {
   const route = useLocation().state;
   const [signedIn, setSignedIn] = useState(null);
   const [noSession, setNoSession] = useState(false);
-  const [rows, setRows] = useState([]);
+  // null until the servings read lands, so a list still out is not drawn as a community with
+  // nobody serving in it. A refresh keeps the rows already on the screen rather than going back
+  // to null, which would make every saved role flash the loading boxes.
+  const [rows, setRows] = useState(null);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
 
@@ -175,7 +179,12 @@ export default function ServingsPage() {
         setRows(list || []);
         setError("");
       })
-      .catch((e) => setError(e.message));
+      // An empty array with the message above it: the read is over, and the failure is said by
+      // the note rather than by a sentence about who is missing from the list.
+      .catch((e) => {
+        setRows([]);
+        setError(e.message);
+      });
   }
 
   useEffect(() => {
@@ -248,7 +257,9 @@ export default function ServingsPage() {
         ) : (
           <section>
             <h3>Servings</h3>
-            {rows.length ? (
+            {rows === null ? (
+              <LoadingBoxes words="Reading this community's servings…" />
+            ) : rows.length ? (
               <div className="tablewrap">
                 <table>
                   <thead>
@@ -282,7 +293,7 @@ export default function ServingsPage() {
                 </table>
               </div>
             ) : (
-              !error && <p className="sub">Nobody is listed under servings for this community yet.</p>
+                !error && <p className="sub">Nobody is listed under servings for this community yet.</p>
             )}
             <p className="hint">
               {canManage

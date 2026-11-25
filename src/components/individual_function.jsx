@@ -3,6 +3,7 @@ import { ChurchFunctionsFetch } from "../page_functions/church_functions.js";
 import { UserFetch } from "../page_functions/user.js";
 import AbsenceFor, { displayName, UNNAMED_PERSON } from "./absence_for.jsx";
 import ProofViewer from "./proof_viewer.jsx";
+import LoadingBoxes from "./loading_boxes.jsx";
 import { named, pretty } from "./view_functions.jsx";
 
 const functions = new ChurchFunctionsFetch();
@@ -269,7 +270,7 @@ export default function IndividualFunction({ community_id, function_id, onBack }
     return (
       <div className="fn">
         <style>{css}</style>
-        <p className="sub">Reading this function…</p>
+        <LoadingBoxes count={4} words="Reading this function…" />
       </div>
     );
   }

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { ChurchFunctionsFetch } from "../page_functions/church_functions.js";
+import LoadingBoxes from "./loading_boxes.jsx";
 
 const functions = new ChurchFunctionsFetch();
 
@@ -188,9 +189,11 @@ export default function ViewFunctions({ community_id, reload, onOpen }) {
         </div>
       ) : (
         !error &&
-        rows !== null && (
+        (rows === null ? (
+          <LoadingBoxes words="Reading this community's functions…" />
+        ) : (
           <p className="sub">Nothing has been planned for this community yet.</p>
-        )
+        ))
       )}
 
       <p className="hint">

@@ -4,6 +4,7 @@ import { Auth } from "../functions/auth.js";
 import { TestimoniesFetch } from "../page_functions/testimonies.js";
 import { decryptText } from "../page_functions/crypto.js";
 import AdminMenu from "./menu.jsx";
+import LoadingBoxes from "../components/loading_boxes.jsx";
 import BackToCommunities from "../components/back.jsx";
 import { adminState, rememberAdmin } from "./state.js";
 
@@ -539,7 +540,7 @@ export default function AdminTestimonies() {
         )}
         {error && <div className="note bad">{error}</div>}
         {note && !error && <div className="note">{note}</div>}
-        {!error && !page && communityId && <p className="tally">Loading…</p>}
+        {!error && !page && communityId && <LoadingBoxes count={4} words="Reading what this community has shared…" />}
 
         {page && !error && (
           <>

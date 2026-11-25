@@ -4,6 +4,7 @@ import { Auth } from "../functions/auth.js";
 import { AttendanceFetch, REASONS } from "../page_functions/attendance.js";
 import { UserFetch } from "../page_functions/user.js";
 import AbsenceFor, { displayName } from "../components/absence_for.jsx";
+import LoadingBoxes from "../components/loading_boxes.jsx";
 import AdminMenu from "./menu.jsx";
 import BackToCommunities from "../components/back.jsx";
 import { adminState, rememberAdmin } from "./state.js";
@@ -384,7 +385,7 @@ export default function AdminAttendance() {
           </form>
         )}
         {error && <div className="note bad">{error}</div>}
-        {!error && !list && communityId && <p className="tally">Loading…</p>}
+        {!error && !list && communityId && <LoadingBoxes count={4} words="Reading the gatherings on record…" />}
 
         {list && !chosen && !error && (
           <>
@@ -439,7 +440,7 @@ export default function AdminAttendance() {
           </>
         )}
 
-        {!error && chosen && !gathering && <p className="tally">Loading…</p>}
+        {!error && chosen && !gathering && <LoadingBoxes count={4} words="Reading who was recorded at that gathering…" />}
 
         {chosen && gathering && !error && (
           <>

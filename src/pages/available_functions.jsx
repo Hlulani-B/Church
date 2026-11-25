@@ -4,6 +4,7 @@ import { Auth } from "../functions/auth.js";
 import { ChurchFunctionsFetch } from "../page_functions/church_functions.js";
 import { pretty } from "../components/view_functions.jsx";
 import Menu from "../components/menu.jsx";
+import LoadingBoxes from "../components/loading_boxes.jsx";
 import BackToCommunities, { BackToDashboard } from "../components/back.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
@@ -156,6 +157,10 @@ export default function AvailableFunctionsPage() {
   }, [communityId]);
 
   const listed = rows?.community_id === communityId ? rows.list : [];
+  // Nothing for this community has arrived yet — either the first read is still out, or the person
+  // moved to a second fellowship and the old one's list is being kept only until the new answer
+  // comes. Both are "reading", and neither is the same sentence as "nothing is planned".
+  const reading = rows === null || rows.community_id !== communityId;
 
   /*
     Opening one invitation goes to the RSVP page for this community and this function, and takes this
@@ -254,11 +259,13 @@ export default function AvailableFunctionsPage() {
               </div>
             ) : (
               !error &&
-              rows !== null && (
+              (reading ? (
+                <LoadingBoxes words="Reading what is still to come…" />
+              ) : (
                 <p className="sub">
                   Nothing is planned in this community that has not already happened.
                 </p>
-              )
+              ))
             )}
 
             <p className="hint">

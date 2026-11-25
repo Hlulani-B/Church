@@ -154,6 +154,27 @@ cannot be re-spelled differently per page. The two feedback pages take the same 
 shape — a link above the pile, a button beside the thank-you — because they are mounted outside the
 header pattern that the community pages share.
 
+## What a page says while it is still reading
+
+A list in state has three possible shapes and every page that draws one now uses all three: `null`
+while its first read is out, `[]` when the read came back with nothing, and the rows themselves when
+it did not. That distinction is not cosmetic. A page that starts its list at `[]` prints its sentence
+about absence — *You are not in a community yet*, *Nobody is listed under servings for this community
+yet* — a moment before the read that would contradict it lands, and the reader concludes the
+fellowship has no servings. The claim is only ever made by a screen entitled to make it now, and the
+gap is drawn by `src/components/loading_boxes.jsx`: pale boxes in the shape of the rows or cards that
+are arriving, plus one line of plain words above them, because a shape means nothing to a reader who
+cannot see it and the words are what a screen reader is given. A page asks for `kind="cards"` where it
+shows cards and the default rows where it shows a table, and names what is being read.
+
+Nothing in the component decides when a read is finished — the page holding the state still does that,
+and it keeps whatever rows are on screen through a refresh rather than going back to `null`, so saving
+a role does not make the list disappear and reappear. A rejected read settles to `[]` beside its error
+note, never to a sentence about who is missing. The session pollers keep their own rule and are the
+exception worth naming: `SessionLive` and `AttendanceControl` render nothing at all when they have no
+rows, because "no check-in is open right now" is genuinely what an empty answer means there, and both
+stand on the last poll that did answer when one fails.
+
 ## The one place the read disagrees with the table
 
 `services` and `service` in `src/functions/attendance.js` compare each gathering's day with

@@ -7,6 +7,7 @@ import BackToCommunities from "../components/back.jsx";
 import AttendanceControl from "../components/attendance_control.jsx";
 import SessionLive from "../components/session_live.jsx";
 import AvailableFunctions from "../components/available_functions.jsx";
+import LoadingBoxes from "../components/loading_boxes.jsx";
 import { adminState, rememberAdmin } from "./state.js";
 import servings from "../page_functions/servings.js";
 
@@ -638,7 +639,7 @@ export default function AdminDashboard() {
               ) : terms.length ? (
                 !error && <p className="tally">Nobody here matches “{find.trim()}”.</p>
               ) : (
-                !error && <p className="sub">Loading…</p>
+                !error && <LoadingBoxes count={5} words="Reading the people in this community…" />
               )}
             </section>
 

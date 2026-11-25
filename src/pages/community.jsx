@@ -5,6 +5,7 @@ import { CommunityFetch } from "../page_functions/community.js";
 import { UserFetch } from "../page_functions/user.js";
 import servings from "../page_functions/servings.js";
 import Menu from "../components/menu.jsx";
+import LoadingBoxes from "../components/loading_boxes.jsx";
 
 const accounts = new Auth();
 const users = new UserFetch();
@@ -82,7 +83,10 @@ export default function CommunityPage() {
   const [signedIn, setSignedIn] = useState(null);
   const [noSession, setNoSession] = useState(false);
   const [member, setMember] = useState(null);
-  const [mine, setMine] = useState([]);
+  // null until the communities read lands: an empty list is a fact about this person's
+  // memberships, a list still out is not, and the page used to say the first while waiting
+  // for the second.
+  const [mine, setMine] = useState(null);
   const [note, setNote] = useState("");
   const [popup, setPopup] = useState("");
   const [communityName, setCommunityName] = useState("");
@@ -312,7 +316,9 @@ export default function CommunityPage() {
         {note && <div className="note">{note}</div>}
 
         <h3>Your communities</h3>
-        {mine.length ? (
+        {mine === null ? (
+          <LoadingBoxes kind="cards" count={3} words="Reading your communities…" />
+        ) : mine.length ? (
           <div className="cards">
             {mine.map((one) => (
               <button className="card" type="button" key={one.community_id} onClick={() => openDashboard(one)}>

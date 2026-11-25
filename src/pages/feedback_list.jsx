@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import Menu from "../components/menu.jsx";
+import LoadingBoxes from "../components/loading_boxes.jsx";
 import { FeedbackFetch } from "../page_functions/feedback.js";
 
 const feedback = new FeedbackFetch();
@@ -157,11 +158,14 @@ export default function FeedbackList() {
         <p className="lede">
           Every note anybody has left about the app itself, newest first. Each one was written by a
           signed-in account and the address is stored with it, but it is not shown here — what you
-          can read is what they said, and when. An export carries the address, because a file is
-          something somebody chose to download.
+          can read is what they said, and when. An export names whoever wrote a note rather than
+          printing their sign-in: your own note carries your own address, and everybody else arrives
+          with the name and surname the members table holds for them.
         </p>
 
-        {state === "loading" && <p className="lede">Loading…</p>}
+        {state === "loading" && (
+          <LoadingBoxes count={4} words="Reading what everyone is saying…" />
+        )}
 
         {state === "ready" && rows.length > 0 && (
           <div className="summary">

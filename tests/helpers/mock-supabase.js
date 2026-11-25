@@ -14,6 +14,7 @@ export function makeSupabaseMock({
   functions = [],
   function_attending = [],
   function_paid = [],
+  feedback = [],
   insertReturns = null,
   singleAsRow = false,
 } = {}) {
@@ -26,8 +27,11 @@ export function makeSupabaseMock({
       filters: [],
       or: null,
       order: null,
+      orders: [],
       limit: null,
       insert: null,
+      upsert: null,
+      onConflict: null,
       update: null,
       delete: false,
       single: false,
@@ -36,6 +40,16 @@ export function makeSupabaseMock({
     const b = {
       select(cols) { state.select = cols; return b },
       insert(row) { state.insert = row; return b },
+      /*
+        `upsert` is the write the member's answer uses, and the conflict target is half of what makes
+        it an edit rather than a second row — so it is recorded on its own, where a test can insist on
+        the pair the tables are actually keyed on.
+      */
+      upsert(row, options) {
+        state.upsert = row
+        state.onConflict = options?.onConflict ?? null
+        return b
+      },
       update(patch) { state.update = patch; return b },
       delete() { state.delete = true; return b },
       eq(col, val) { state.filters.push({ kind: 'eq', col, val }); return b },
@@ -46,7 +60,13 @@ export function makeSupabaseMock({
       lt(col, val) { state.filters.push({ kind: 'lt', col, val }); return b },
       gt(col, val) { state.filters.push({ kind: 'gt', col, val }); return b },
       in(col, vals) { state.filters.push({ kind: 'in', col, vals }); return b },
-      order(col, opts) { state.order = { col, opts }; return b },
+      // `order` stays the last one asked for, which is what the older tests read; `orders` keeps the
+      // whole sequence, for a read whose second ordering matters as much as its first.
+      order(col, opts) {
+        state.order = { col, opts }
+        state.orders.push({ col, opts })
+        return b
+      },
       limit(n) { state.limit = n; return b },
       single() { state.single = true; return b },
       maybeSingle() { state.maybeSingle = true; return b },
@@ -60,11 +80,11 @@ export function makeSupabaseMock({
   }
 
   function pick(table, state) {
-    // An insert echoes back a caller-supplied row (matching `.insert().select().single()`
+    // An insert or an upsert echoes back a caller-supplied row (matching `.insert().select().single()`
     // against PostgREST, which returns the row the DB actually stored, defaults and generated
     // ids included). Without `insertReturns`, the mock falls back to echoing the payload.
-    if (state.insert) {
-      const echo = insertReturns || state.insert
+    if (state.insert || state.upsert) {
+      const echo = insertReturns || state.insert || state.upsert
       return { data: state.single ? echo : [echo], error: null }
     }
     if (state.update) {
@@ -86,12 +106,46 @@ export function makeSupabaseMock({
                 ? function_attending
                 : table === 'function_paid'
                   ? function_paid
-                  : []
+                  : table === 'feedback'
+                    ? feedback
+                    : []
+    /*
+      PostgREST's filtered aggregate, which is how the register's three tallies are made: an embed
+      named in the select string (`going:function_attending(count)`) and the rows it counts named by a
+      filter on that same alias (`going.attending`). Counting them here, rather than handing the child
+      rows back for the class to add up, is what lets a test seed answers and still assert on the
+      numbers — so a rewrite that counts the wrong column, or drops a function whose tally is nought,
+      fails here instead of returning a list that merely looks right.
+    */
+    const tallies = [...String(state.select || '').matchAll(/(\w+):(function_attending|function_paid)\(count\)/g)]
+    if (tallies.length) {
+      const under = { function_attending, function_paid }
+      return {
+        data: rows.map((parent) => {
+          const counted = {}
+          for (const [, alias, child] of tallies) {
+            const gates = state.filters.filter((one) => one.col.startsWith(`${alias}.`))
+            counted[alias] = [
+              {
+                count: under[child].filter(
+                  (one) =>
+                    one.function_id === parent.id &&
+                    gates.every((gate) => one[gate.col.slice(alias.length + 1)] === gate.val),
+                ).length,
+              },
+            ]
+          }
+          return { ...parent, ...counted }
+        }),
+        error: null,
+      }
+    }
     /*
       PostgREST hands back one object rather than a one-row array when a read ends in .single() or
       .maybeSingle(), and a class that reads a row by its id expects that shape. `singleAsRow` gives
       it; the default is left as this mock has always behaved — handing the whole table back — so the
-      tests written against rows a class iterates over keep reading what they always read.
+      tests written against rows a class iterates over keep reading what they always read. A mock that
+      turns it on has to hold only the rows the read is meant to find, because nothing here filters.
     */
     if (singleAsRow && (state.single || state.maybeSingle)) {
       return { data: rows[0] ?? null, error: null }
@@ -124,6 +178,19 @@ export function sessionWith(mock) {
 export function churchFunctionWith(mock) {
   return import('../../src/functions/church_functions.js').then(({ ChurchFunctions }) => {
     const instance = new ChurchFunctions('http://example.invalid', 'fake-key')
+    instance.client = mock
+    return instance
+  })
+}
+
+/*
+  And for the feedback pile, which reads two tables for the same reason the register does: the rows
+  carry an address and the names live in `users`, so a test that cares about which of the two a reader
+  is handed has to be able to seed both.
+*/
+export function feedbackWith(mock) {
+  return import('../../src/functions/feedback.js').then(({ Feedback }) => {
+    const instance = new Feedback('http://example.invalid', 'fake-key')
     instance.client = mock
     return instance
   })

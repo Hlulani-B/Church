@@ -23,7 +23,8 @@ browser. The tests exercise pure functions and classes that talk to a chainable 
 | `session-live.test.js` | `Session.live(...)`: the `cancel` null-tolerance, the window filter, the already-marked pass, PIN exclusion, `near_required`, and the `leader_name` join |
 | `session-create.test.js` | `Session.create(...)`: the overlap guard, its `cancel` filter, and the two different refusal messages for own-blocker vs. someone-else's |
 | `session-manage.test.js` | `Session.manage(...)`: the `cancel` null-tolerance that keeps a called-off session off the leader/admin dashboard, its window bound, and which readers the PIN is released to |
-| `church-functions.test.js` | `ChurchFunctions.create(...)`: `amount_matches_payment` mirrored — no amount against a free function, whatever was typed. `ChurchFunctions.list(...)`: the three tallies, and the one `in`-read per child table rather than one per function. `ChurchFunctions.details(...)`: both answers folded onto one line per person, an unknown address kept and named by its email, and a function from another fellowship refused before any name is read |
+| `church-functions.test.js` | `ChurchFunctions.create(...)`: `amount_matches_payment` mirrored — no amount against a free function, whatever was typed. `ChurchFunctions.list(...)`: the three tallies, and the one read that both lists the functions and asks the database to count them — the condition each tally counts is asserted on the aggregate's alias (`going.attending`, `paid.paid`, `promised.paid`), and neither child table is touched separately. `ChurchFunctions.details(...)`: both answers folded onto one line per person, the planner named in words off the same read that names the answerers, the leader who signed a receipt off named out of that same single read — with the `confirmed_by` addresses collected beside the answerers' so the naming stays one request, and an unknown confirmer left as the address it arrived as, which is how the page can tell a leader it has no name for from one it has — an unknown address kept and named by its email, and a function from another fellowship refused before any name is read. The member's three reads on the same file: `available(...)` keeps today and everything after it and sorts soonest first; `rsvp(...)` names the planner and answers a person who has never been asked as `null` rather than `false`; `respond(...)` writes each half of `paid_fields_match` in the shape the check accepts, writes no money row at all when neither a receipt nor a day arrived, and never carries `confirmed_by` or `confirmed_at` |
+| `feedback.test.js` | `Feedback.all(...)`: every author named off one `in` over `users`, the bare address kept on only the caller's own note and `null` on everybody else's, an author the `users` table does not hold answered in words rather than with their sign-in, the caller's own address allowed as their label when they have no name, the match made whatever case either side arrived in, no naming read at all on an empty pile, and names for everybody with an address for nobody when the call carries no caller |
 
 ## What the tests actually assert
 
@@ -54,16 +55,29 @@ makeSupabaseMock({ session, event, users, functions, function_attending, functio
 
 It returns an object shaped like a `createClient()` result — `.from(table)` gives back a
 chainable builder that records every `.eq / .or / .lte / .gte / .in / .select / .order /
-.limit / .single / .maybeSingle / .insert / .update / .delete` call and, being **thenable**,
-resolves to the preloaded rows for that table when awaited. `.insert(row)` echoes the row back
-when `insertReturns` is set, which is what lets a happy-path create test read the row the code
-thought it wrote.
+.limit / .single / .maybeSingle / .insert / .upsert / .update / .delete` call and, being **thenable**,
+resolves to the preloaded rows for that table when awaited. `.insert(row)` and `.upsert(row, options)`
+echo the row back when `insertReturns` is set, which is what lets a happy-path create test read the row
+the code thought it wrote; `upsert` also keeps `options.onConflict` on its own, because the conflict
+target is half of what makes a member's second answer an edit rather than a duplicate row. Two
+recordings exist where a call can repeat: `order` is the last ordering asked for, as the older tests
+read it, and `orders` is the whole sequence, for a read like `available` whose second sort key matters
+as much as its first.
 
 `singleAsRow` is the one behavioural switch, and it is off by default. PostgREST answers a read that
 ends in `.single()` or `.maybeSingle()` with one object rather than a one-row array, and a class that
-reads a row by its id — `ChurchFunctions.details` does — needs that shape. Every test written against
+reads a row by its id — `ChurchFunctions.details` does, and so do the member's `rsvp` and `respond` —
+needs that shape. Every test written against
 rows a class iterates over keeps getting the whole table, because the default was left as the mock
 always behaved rather than changed under the older suites.
+
+One read is answered rather than echoed. When a select string carries an aggregate over a child table
+(`going:function_attending(count)`) the mock counts those rows itself, keeping to the condition the
+class put on the alias path, and hands back `[{ count: n }]` the way PostgREST does. `list` is the only
+class method that asks for one, and the reason it is emulated rather than ignored is the same as the
+reason the filters are recorded: a test should be able to seed three answers and assert the tally it
+implies, so a rewrite that counts the wrong column — or leaves out a function whose tally is nought —
+fails instead of returning a list that merely looks right.
 
 Two accessors make the assertions readable:
 

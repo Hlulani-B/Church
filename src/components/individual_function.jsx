@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { ChurchFunctionsFetch } from "../page_functions/church_functions.js";
 import { UserFetch } from "../page_functions/user.js";
-import AbsenceFor, { displayName } from "./absence_for.jsx";
-import { pretty } from "./view_functions.jsx";
+import AbsenceFor, { displayName, UNNAMED_PERSON } from "./absence_for.jsx";
+import ProofViewer from "./proof_viewer.jsx";
+import { named, pretty } from "./view_functions.jsx";
 
 const functions = new ChurchFunctionsFetch();
 const directory = new UserFetch();
@@ -30,6 +31,18 @@ const directory = new UserFetch();
   function, so the lookup is a single map read off what has already been fetched. A person on the
   roster with no row under the function is not missing from the answer: "nothing recorded yet" is
   itself the answer, and the honest one.
+
+  The proof of payment is opened rather than printed. Every receipt gets its own column, in both of
+  the sections that hold one, and clicking it draws the file over this screen — so a leader checking a
+  name against a bank reference never has to leave the row they are checking, and never has to read a
+  storage url to work out what they are allowed to look at.
+
+  Nobody on this page is an email address, and no page anywhere else is either: the fellowship's rule
+  is that a person sees only their own address and everybody else by name and surname. So every
+  person here is the name the users table holds, through the same one read that names the planner,
+  everybody who answered and whoever signed a receipt off, because a bare address answers none of the
+  questions a register is read for. Where that read finds no name the page says so in words instead —
+  `named` for what the reads hand over, `displayName` for the person the For-who box picked.
 */
 
 const css = `
@@ -49,6 +62,7 @@ const css = `
 .fn .stand dl{display:flex;flex-wrap:wrap;gap:6px 28px;margin:8px 0 0}
 .fn .stand dt{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#666;font-weight:600}
 .fn .stand dd{margin:2px 0 0}
+.fn .stand .wide{flex:1 1 100%}
 .fn .stand .free{color:#666}
 
 .fn .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:38px 0 0}
@@ -63,7 +77,6 @@ const css = `
 .fn td{padding:12px 14px;border-bottom:1px solid #e3e3e3;vertical-align:top}
 .fn tbody tr:last-child td{border-bottom:0}
 .fn .who{font-weight:600}
-.fn .mail{display:block;font-size:13px;font-weight:400;color:#666;margin-top:2px}
 .fn .free{color:#666}
 .fn .none{margin:14px 0 0;font-size:15px;color:#666}
 .fn .note{background:#f4f4f4;border-left:3px solid #a11111;padding:12px 16px;font-size:14px;margin:22px 0 0}
@@ -119,6 +132,15 @@ const amountOf = (one) =>
 
 const dash = <span className="free">—</span>;
 
+/*
+  A person on this page in words, never as an address, which is what `named` is for. The wording for a
+  person the users table has no name for is the For-who box's own, imported rather than repeated here;
+  only the leader's version is settled on this page, because a confirmer and an answerer are not the
+  same kind of person to a leader reading a register. The Money sentence uses the leader's version
+  lower-cased, because it sits mid-sentence.
+*/
+const UNNAMED_LEADER = "A leader this fellowship has not named";
+
 export default function IndividualFunction({ community_id, function_id, onBack }) {
   const [detail, setDetail] = useState(null);
   const [peopleList, setPeopleList] = useState([]);
@@ -162,8 +184,12 @@ export default function IndividualFunction({ community_id, function_id, onBack }
           columns: [
             { head: "Person", cell: personCell },
             { head: "Receipt up", cell: (p) => show(stamp(p.proof_submitted_at)) },
-            { head: "Confirmed by", cell: (p) => <span className="mail">{p.confirmed_by}</span> },
+            {
+              head: "Confirmed by",
+              cell: (p) => show(named(p.confirmed_by_label, p.confirmed_by, UNNAMED_LEADER)),
+            },
             { head: "Confirmed on", cell: (p) => show(stamp(p.confirmed_at)) },
+            { head: "Proof", cell: proofCell },
           ],
         },
         {
@@ -173,7 +199,7 @@ export default function IndividualFunction({ community_id, function_id, onBack }
           columns: [
             { head: "Person", cell: personCell },
             { head: "Receipt up", cell: (p) => show(stamp(p.proof_submitted_at)) },
-            { head: "File", cell: (p) => <span className="mail">{p.proof_path || dash}</span> },
+            { head: "Proof", cell: proofCell },
           ],
         },
         {
@@ -213,6 +239,11 @@ export default function IndividualFunction({ community_id, function_id, onBack }
 
   const shown = sections.find((section) => section.key === tab) || sections[0];
   const members = shown ? answers.filter(shown.picks) : [];
+
+  // Money rows under a function that asks for nothing are not anybody's business to invent, so they
+  // are counted once here and said about once below, rather than filtered three times on the way to
+  // one sentence.
+  const unexpected = answers.filter((person) => person.paid || person.expected_pay_date);
 
   /*
     Where one person stands, read off the same folded rows the sections use. An address on the roster
@@ -276,8 +307,10 @@ export default function IndividualFunction({ community_id, function_id, onBack }
           </dd>
         </div>
         <div>
+          {/* Named by the read the answers are named by, because `created_by` holds an address and a
+              leader reading this wants the person. */}
           <dt>Created by</dt>
-          <dd>{one.created_by}</dd>
+          <dd>{show(named(detail.planned_by, one.created_by, UNNAMED_PERSON))}</dd>
         </div>
         <div>
           <dt>Planned on</dt>
@@ -295,8 +328,7 @@ export default function IndividualFunction({ community_id, function_id, onBack }
         <AbsenceFor people={peopleList} value={chosenEmail} onChange={setChosenEmail} />
         {chosenEmail && (
           <div className="stand">
-            <strong>{displayName(lookedName) || chosenEmail}</strong>
-            <div className="mail">{chosenEmail}</div>
+            <strong>{displayName(lookedName) || UNNAMED_PERSON}</strong>
             <dl>
               <div>
                 <dt>Coming</dt>
@@ -306,6 +338,12 @@ export default function IndividualFunction({ community_id, function_id, onBack }
                 <div>
                   <dt>Money</dt>
                   <dd>{looked ? money(looked, one) : <span className="free">Nothing recorded yet</span>}</dd>
+                </div>
+              )}
+              {paidFunction && looked?.paid && (
+                <div className="wide">
+                  <dt>Proof</dt>
+                  <dd>{proofCell(looked)}</dd>
                 </div>
               )}
             </dl>
@@ -359,25 +397,30 @@ export default function IndividualFunction({ community_id, function_id, onBack }
         </p>
       )}
 
-      {!paidFunction && answers.some((person) => person.paid || person.expected_pay_date) && (
+      {!paidFunction && unexpected.length > 0 && (
         <p className="aside">
-          This function asks nobody for money, yet {answers.filter((person) => person.paid || person.expected_pay_date).length}{" "}
-          {answers.filter((person) => person.paid || person.expected_pay_date).length === 1
-            ? "person has" : "people have"} a payment row under it. Those rows are listed under the two
-          sections above only by their attendance, so somebody should check where they came from.
+          This function asks nobody for money, yet {unexpected.length}{" "}
+          {unexpected.length === 1 ? "person has" : "people have"} a payment row under it. Those rows
+          are listed under the two sections above only by their attendance, so somebody should check
+          where they came from.
         </p>
       )}
     </div>
   );
 }
 
+// A person, by name. The address they are keyed on is not shown anywhere on this page: it is what the
+// two child tables are joined with, not a thing a leader reads.
 function personCell(person) {
-  return (
-    <span className="who">
-      {person.label}
-      {person.label !== person.email && <span className="mail">{person.email}</span>}
-    </span>
-  );
+  return <span className="who">{named(person.label, person.email, UNNAMED_PERSON)}</span>;
+}
+
+/*
+  Whose receipt it is, said in the viewer's own caption. An unknown name leaves the caption out rather
+  than filling it with an address — the button still says what it is a picture of.
+*/
+function proofCell(person) {
+  return <ProofViewer url={person.proof_path} label={named(person.label, person.email, "")} />;
 }
 
 function show(value) {
@@ -394,7 +437,11 @@ function coming(person) {
 // confirmed receipt, a receipt on a leader's desk, a date given instead of money, or no row at all.
 function money(person, one) {
   if (person.paid && isConfirmed(person)) {
-    return `Paid ${amountOf(one)}, confirmed by ${person.confirmed_by} on ${stamp(person.confirmed_at)}`;
+    return `Paid ${amountOf(one)}, confirmed by ${named(
+      person.confirmed_by_label,
+      person.confirmed_by,
+      UNNAMED_LEADER.toLowerCase(),
+    )} on ${stamp(person.confirmed_at)}`;
   }
   if (person.paid) return "Paid, waiting for somebody to check the receipt";
   if (person.expected_pay_date) return `Promised by ${pretty(person.expected_pay_date)}`;

@@ -5,6 +5,7 @@ import { AttendanceFetch, REASONS } from "../page_functions/attendance.js";
 import Menu from "../components/menu.jsx";
 import BackToCommunities from "../components/back.jsx";
 import SessionLive from "../components/session_live.jsx";
+import AvailableFunctions from "../components/available_functions.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 import { AdminDashboardFetch } from "../page_functions/admin_dashboard.js";
 
@@ -241,7 +242,7 @@ export default function MemberDashboard() {
             </button>
             <button
               type="button"
-              onClick={() => navigate("/feedback")}
+              onClick={() => navigate("/feedback", { state: { ...heading, role: "member" } })}
             >
               Feedback
             </button>
@@ -251,6 +252,9 @@ export default function MemberDashboard() {
             >
               Servings
             </button>
+            {/* The one invitation a member gets on their own screen: what is still to come, and the
+                answer they have given it. */}
+            <AvailableFunctions state={{ ...heading, role: "member" }} />
           </div>
         )}
 

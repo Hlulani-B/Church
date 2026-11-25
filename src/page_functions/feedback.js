@@ -10,16 +10,16 @@ import { downloadExcel, downloadPdf, moment } from './table_files.js'
 
 // A row as it leaves the browser. The three free-text answers are what the pile is read for,
 // so they keep their own columns rather than being merged into one paragraph nobody can sort.
-// `email` is written here and deliberately never rendered on screen: it is the proof that the
-// note came from a real account, and it belongs in a file somebody chose to download, not on a
-// page every signed-in stranger can scroll.
+// `submitted_by` is the name the server read for the note's author, and it is what the exported file
+// says now: the address used to be the one column a download carried and a screen did not, which was
+// the same rule broken in whichever form the reader happened to hold the pile.
 function cells(one) {
   const stars = Math.max(0, Math.min(5, Number(one.stars) || 0))
   return {
     stars,
     rating: `${stars}/5`,
     when: moment(one.created_at),
-    email: one.email || 'not recorded',
+    submitted_by: one.submitted_by || 'not recorded',
     solved: one.solves_problem ? 'yes' : 'no',
     most_challenging: one.most_challenging || '',
     improvements: one.improvements || '',
@@ -33,14 +33,15 @@ export class FeedbackFetch {
     any good, then the three answers. Only the three prose columns are left to take the rest of
     the PDF page; everything else knows how long it is.
 
-    `email` sits between the rating and the date rather than at the end, because in a file it is
-    the column a reader is there to check, and a column at the far right of a wide sheet is the
-    one nobody scrolls to.
+    `submitted_by` sits between the rating and the date rather than at the end, because in a file it is
+    the column a reader is there to check, and a column at the far right of a wide sheet is the one
+    nobody scrolls to. It carries a name rather than an address for the reason the read gives: whoever
+    is handed a file of what people said is not owed everybody's sign-in.
   */
   static get COLUMNS() {
     return [
       { key: 'rating', head: 'Rating', sheetWidth: 9, pdfWidth: 40 },
-      { key: 'email', head: 'Submitted by', sheetWidth: 30, pdfWidth: 105 },
+      { key: 'submitted_by', head: 'Submitted by', sheetWidth: 30, pdfWidth: 105 },
       { key: 'when', head: 'Submitted', sheetWidth: 18, pdfWidth: 88 },
       { key: 'solved', head: 'Solved problem', sheetWidth: 15, pdfWidth: 62 },
       { key: 'most_challenging', head: 'Most challenging', sheetWidth: 46 },

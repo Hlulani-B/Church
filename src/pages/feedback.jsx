@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import Menu from "../components/menu.jsx";
 import { FeedbackFetch } from "../page_functions/feedback.js";
 
@@ -11,8 +11,9 @@ const feedback = new FeedbackFetch();
   what they think, and the row they leave carries the address on their own ID token.
 
   That is not a choice the form offers any more, so the page says it out loud above the boxes.
-  What a person can still control is how much of themselves goes in the text — and what nobody
-  sees on this page is the address itself, which is stored and exported but never printed.
+  What a person can still control is how much of themselves goes in the text — and the address itself
+  is what nobody is shown, on this page or in the file the pile exports, because the app keeps every
+  person's sign-in for that person alone.
 */
 const css = `
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;1,500&display=swap");
@@ -25,6 +26,8 @@ const css = `
 .fb h1{font-size:38px;line-height:1.15;margin:0 0 12px}
 .fb h1 em{font-style:italic}
 .fb .lede{color:var(--muted);margin:0 0 32px;font-size:17px}
+.fb .back{font-size:14px;font-weight:600;margin:0 0 18px}
+.fb .back a{color:var(--ink);text-decoration:none;border-bottom:1px solid currentColor}
 .fb h3{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:32px 0 10px;font-weight:600}
 .fb .stars{display:flex;gap:6px}
 .fb .stars button{background:#fff;border:1px solid var(--line);border-radius:2px;font-size:26px;line-height:1;padding:8px 12px;cursor:pointer;color:#bdbdbd;font-family:inherit}
@@ -82,6 +85,9 @@ function YesNo({ value, onChange, name, disabled }) {
 
 export default function FeedbackPage() {
   const navigate = useNavigate();
+  // The role whose dashboard opened the form. Feedback is not about a community, but the person
+  // writing it got here from one screen, and that screen should not be a dead end.
+  const role = useLocation().state?.role;
   const [stars, setStars] = useState(0);
   const [solves, setSolves] = useState(null);
   const [improvements, setImprovements] = useState("");
@@ -128,6 +134,11 @@ export default function FeedbackPage() {
             <p className="lede">Your notes go straight to whoever runs this app, and into the pile everybody here can read. Nothing else happens automatically — your address is stored with the note but never shown beside it.</p>
             <div className="row" style={{ justifyContent: "center" }}>
               <button className="btn" type="button" onClick={() => navigate(-1)}>Back</button>
+              {role && (
+                <Link to={`/${role}-dashboard`} className="btn ghost">
+                  The {role} dashboard
+                </Link>
+              )}
               <Link to="/feedback/all" className="btn ghost">See what others have said</Link>
               <Link to="/community" className="btn ghost">My communities</Link>
             </div>
@@ -145,6 +156,11 @@ export default function FeedbackPage() {
         <Menu guideRole="feedback" items={[{ label: "See everyone's notes", to: "/feedback/all" }]} />
       </header>
       <main className="main">
+        {role && (
+          <p className="back">
+            <Link to={`/${role}-dashboard`}>← The {role} dashboard</Link>
+          </p>
+        )}
         <h1 className="serif">How is <em>Kopano</em> going?</h1>
         <p className="lede">
           Five short questions. Nothing here appears on a community's dashboard. Everybody who uses
@@ -187,10 +203,13 @@ export default function FeedbackPage() {
           />
 
           {/* Not a choice, so not a checkbox: the row is signed, and the page says so rather
-              than letting somebody discover it afterwards. */}
+              than letting somebody discover it afterwards. The signature is a fact for the table
+              and for nobody's screen: the read that feeds the pile has already traded the address
+              for a name, so an export cannot carry what a browser was never sent. */}
           <p className="sign">
             This is signed with the address you are signed in with. It is stored with the note and
-            travels into an export, and it is never printed next to your words on the pile page.
+            shown to nobody — the pile prints no address, and a downloaded export names people
+            instead.
           </p>
 
           {error && <div className="err">{error}</div>}

@@ -20,14 +20,15 @@ import {
 
   This is one of the three endpoints god.js was split into by auth tier. Nothing here needs a role:
   a person reads their own user row, opens and joins communities, becomes the first member of a
-  community they just created, gives notice of an absence, checks themselves in with a PIN, and asks
-  what is open for check-in right now. Every write is about the caller, whose address the Firebase
-  token forces over anything in the body.
+  community they just created, gives notice of an absence, checks themselves in with a PIN, answers a
+  function the fellowship has planned, and asks what is open for check-in right now. Every write is
+  about the caller, whose address the Firebase token forces over anything in the body.
 
   Reading the roster and the attendance, and opening or managing a check-in session, live in
-  /api/leader; changing who is in a community, its roles and its join code live in /api/admin. A
-  request that belongs over there is refused here by the whitelist below, so a browser cannot reach
-  a leader or admin power by guessing an endpoint.
+  /api/leader; changing who is in a community, its roles and its join code live in /api/admin. So does
+  the functions page's register, which counts everybody's answers under a function rather than one
+  person's. A request that belongs over there is refused here by the whitelist below, so a browser
+  cannot reach a leader or admin power by guessing an endpoint.
 */
 
 // What a signed-in browser may do at this tier, and nothing else.
@@ -46,6 +47,12 @@ const SELF_ACTIONS = {
   // membership check applies; the address on the row is the token's, which is what makes the
   // pile attributable rather than anonymous.
   feedback: ['create', 'all'],
+  /*
+    A planned function, from the member's side: what is still to come, what one of them says about
+    me, and my own answer to it. The register of who has come and who has paid stays a leader's read
+    at /api/leader — this tier only ever reads the list and writes the caller's own two rows.
+  */
+  church_function: ['available', 'rsvp', 'respond'],
 }
 
 export default async function handler(req, res) {
@@ -531,6 +538,84 @@ export default async function handler(req, res) {
         email,
       })
       return res.status(200).json({ data: { ...added, name: one.name } })
+    }
+
+    /*
+      Answering a function is the third of the writes a plain member has, and it is the only one that
+      puts rows in the two tables under a function. Three things are forced and one is left out. Forced:
+      the community is one this caller belongs to, read off `community_members` through the same helper
+      the absence notice and the check-in above use; the function_id has to be a number, because it is a
+      bigint and a letter would come back as a Postgres type error nobody could interpret; and the
+      address on both rows is the token's, never the body's, so a member cannot answer for a neighbour
+      or pay somebody else's way. Left out: `confirmed_by` and `confirmed_at`. A confirmation is a
+      leader's signature over a receipt, and nothing on this path can sign it — which is what keeps
+      "I attached my proof" from becoming "my payment is accepted".
+
+      A receipt is a web address rather than the file itself: the page puts the file into storage and
+      hands back the public url, so this branch only ever checks that the string looks like one. The
+      day given instead of a receipt is kept as `YYYY-MM-DD`, which is what the date column wants and
+      what the table's `paid_fields_match` check then reads as an outstanding promise. Giving neither
+      is allowed, and writes no money row at all.
+    */
+    if (action === 'church_function') {
+      if (!params.community_id) {
+        return res
+          .status(400)
+          .json({ error: 'params.community_id is required to see what a community has planned' })
+      }
+      const function_id = String(params.function_id ?? '').trim()
+      if (params.function !== 'available' && !/^\d+$/.test(function_id)) {
+        return res.status(400).json({
+          error: 'params.function_id is the number a planned function is addressed by',
+        })
+      }
+      const link = await links.find(email, params.community_id)
+      if (!link) {
+        return res
+          .status(403)
+          .json({ error: 'only a member of that community can see or answer its functions' })
+      }
+      if (params.function === 'available') {
+        params = { function: 'available', community_id: params.community_id }
+        return finish(god, action, params, null, res)
+      }
+      if (params.function === 'respond') {
+        const attending = params.attending === true ? true : params.attending === false ? false : null
+        if (attending === null) {
+          return res.status(400).json({
+            error: 'params.attending is required — true when you are coming, false when you are not',
+          })
+        }
+        const proof_path = String(params.proof_path || '').trim()
+        if (proof_path && !/^https?:\/\//.test(proof_path)) {
+          return res.status(400).json({
+            error: 'params.proof_path is the web address of the receipt the page attached',
+          })
+        }
+        const expected_pay_date = String(params.expected_pay_date || '').trim()
+        if (expected_pay_date && !/^\d{4}-\d{2}-\d{2}$/.test(expected_pay_date)) {
+          return res.status(400).json({
+            error: 'params.expected_pay_date is the day you expect to pay, written as 2026-12-05',
+          })
+        }
+        params = {
+          function: 'respond',
+          community_id: params.community_id,
+          function_id,
+          user_email: email,
+          attending,
+          proof_path: proof_path || null,
+          expected_pay_date: expected_pay_date || null,
+        }
+        return finish(god, action, params, null, res)
+      }
+      params = {
+        function: 'rsvp',
+        community_id: params.community_id,
+        function_id,
+        user_email: email,
+      }
+      return finish(god, action, params, null, res)
     }
   }
 

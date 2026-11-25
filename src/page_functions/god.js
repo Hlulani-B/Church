@@ -31,8 +31,11 @@ const TIER = {
   event: (fn) => (fn === 'record_for' ? 'leader' : 'self'),
   session: (fn) => (fn === 'open' || fn === 'live' ? 'self' : 'leader'),
   feedback: 'self',
-  // Both moves on the functions page belong to whoever runs the fellowship, admin or leader.
-  church_function: 'leader',
+  // The functions page belongs to whoever runs the fellowship, admin or leader. A member's own three
+  // moves — what is still to come, what one function says about me, and my answer to it — belong to
+  // the caller rather than to the fellowship, so they go to /api/self.
+  church_function: (fn) =>
+    fn === 'list' || fn === 'create' || fn === 'details' ? 'leader' : 'self',
 }
 const PATH = { self: '/api/self', leader: '/api/leader', admin: '/api/admin' }
 

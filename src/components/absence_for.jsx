@@ -4,8 +4,8 @@ import React, { useState } from "react";
   The one For-who box the absence forms share, carried by both attendance pages so the pick
   changes here and nowhere else. It is a dropdown whose id is an email but whose every line is
   a name and a surname — the pages hand it people read from getUsers, with the caller's own
-  details at the very top — and a search box for the fellowship too big to scroll. The email
-  never shows in the list; it is only what the page keeps and sends.
+  details at the very top — and a search box for the fellowship too big to scroll. The address
+  is never searched and never shown: it is only what the page keeps and sends.
 
   Native to the form and nothing else: an <input> would put addresses in front of people, and a
   <select> cannot search. The list closes on a blur, and it holds the input's focus through a
@@ -22,11 +22,18 @@ const css = `
 .kw .list .empty{padding:8px 14px;color:#666;font-size:14px}
 `;
 
-// What one person is called on this page: the two names the users row holds, or the address
-// when a row is somehow blank, so nobody is ever picked out of a list as an empty line.
+/*
+  The one thing a page says when it is asked who somebody is and the `users` row has no name to give:
+  words about the missing name, and not the address that row happens to hold. This box lists other
+  people, and the fellowship's rule is that nobody is shown anybody else's email but their own.
+*/
+export const UNNAMED_PERSON = "Somebody this fellowship has not named";
+
+// What one person is called on this page: the two names the users row holds, or the words above
+// when it holds none. An address never stands in for a name, and an empty line is no answer either.
 export function displayName(one) {
   if (!one) return "";
-  return `${one.name ?? ""} ${one.surname ?? ""}`.trim() || one.email || "";
+  return `${one.name ?? ""} ${one.surname ?? ""}`.trim() || UNNAMED_PERSON;
 }
 
 export default function AbsenceFor({ people, value, onChange }) {
@@ -35,7 +42,7 @@ export default function AbsenceFor({ people, value, onChange }) {
   const chosen = people.find((one) => one.email === value) || null;
   const needle = query.trim().toLowerCase();
   const matches = needle
-    ? people.filter((one) => `${displayName(one)} ${one.email}`.toLowerCase().includes(needle))
+    ? people.filter((one) => displayName(one).toLowerCase().includes(needle))
     : people;
 
   function pick(one) {

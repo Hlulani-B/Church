@@ -6,6 +6,7 @@ import LeaderMenu from "./menu.jsx";
 import BackToCommunities from "../components/back.jsx";
 import AttendanceControl from "../components/attendance_control.jsx";
 import SessionLive from "../components/session_live.jsx";
+import AvailableFunctions from "../components/available_functions.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
 const accounts = new Auth();
@@ -214,7 +215,7 @@ export default function LeaderDashboard() {
             <button
               className="primary"
               type="button"
-              onClick={() => navigate("/take-attendance", { state: heading })}
+              onClick={() => navigate("/take-attendance", { state: { ...heading, role: "leader" } })}
             >
               Take attendance
             </button>
@@ -242,6 +243,10 @@ export default function LeaderDashboard() {
             >
               Functions
             </button>
+            {/* A leader is invited to a function the same way a member is, and answers it the same
+                way. This button goes to the list of what is still to come; the Functions button
+                above it is the register, where the answers being read are everybody else's. */}
+            <AvailableFunctions state={{ ...heading, role: "leader" }} />
           </div>
         )}
 

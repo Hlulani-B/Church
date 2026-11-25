@@ -76,9 +76,9 @@ const CONTENT = {
     heading: "Feedback",
     intro: "Five questions about the app itself. Nothing you write shows up on any dashboard.",
     steps: [
-      { t: "It is signed, not printed", d: "The address on your note is the one you signed in with — there is no box to tick. It is written to the database and it travels into an export, and it is never shown next to your words on the pile page." },
+      { t: "It is signed, not printed", d: "The address on your note is the one you signed in with — there is no box to tick. It is written to the database and shown to nobody: the pile page prints no address, and the Excel and PDF exports carry the name and surname the app holds for that account instead." },
       { t: "Everyone can read the pile", d: "Press \"See what others have said\" — or open the same list at /feedback/all, which also exports it to Excel and PDF. The feedback is about the app, so it belongs to everybody who uses it, not to the small set of people who administer a fellowship." },
-      { t: "Your words are still yours to stand by", d: "Nobody sees your address on the page, but whoever runs the app can pair a note with the account that wrote it. Say what you mean in the text you choose to leave in." },
+      { t: "Your words are still yours to stand by", d: "Nobody sees your address, on a page or in a file, but your name goes with your note wherever the pile is exported. Say what you mean in the text you choose to leave in." },
     ],
   },
 };

@@ -34,18 +34,19 @@ Note what is **not** here:
 
 One rule runs through the whole feature, and it is easy to get backwards:
 
-| | Rating, dates, the three answers | The address |
+| | Rating, dates, the three answers | The author |
 | --- | --- | --- |
-| **In the database** | yes | **yes** — from the ID token, on every row |
-| **In an export (`.xlsx` / `.pdf`)** | yes | **yes** — a `Submitted by` column |
-| **On `/feedback/all`, on any dashboard, in any tooltip** | yes | **never** |
+| **In the database** | yes | **the address** — from the ID token, on every row |
+| **In an export (`.xlsx` / `.pdf`)** | yes | **the name and surname** — a `Submitted by` column, never an address |
+| **On `/feedback/all`, on any dashboard, in any tooltip** | yes | **nobody at all** |
 
 The address exists so the pile is a record of what real accounts said rather than a wall of
-unverifiable opinions, and so that claim can be checked by whoever is handed an export. It is kept
-off the screen because a page every signed-in stranger can scroll is the wrong place for a list of
-each other's email addresses. Name and surname are not on the table at all — the row has an
-address and nothing else to identify a person with, so a member's display name never appears in
-feedback anywhere.
+unverifiable opinions, and it is written from the token rather than the body, so it cannot be forged.
+It is not, however, what a reader is handed. The app keeps each person's sign-in for that person
+alone, so `Feedback.all` matches the addresses on the page against one `users` read and returns
+`submitted_by` — the two names that row holds — with the bare address left on only the caller's own
+note. A page and a download are held to the same rule, because a file is a screen somebody else ends
+up reading.
 
 There is no checkbox. An earlier cut of the form offered "include my email so a reply is possible"
 and left the column `null` when it was off; that made the honest pile sparse, and a table whose
@@ -119,8 +120,12 @@ The DB check on `stars` is real (`CHECK (stars BETWEEN 1 AND 5)`) and the class 
 duplicate it out of paranoia — it duplicates it so that a bad request fails at 400 with a
 message that names the field, rather than at `23514` with a message that names a constraint.
 
-`all({ limit })` is capped at 500 rows per read, ordered by `created_at desc`. The page that
-uses it today fits well inside that; if the pile grows, the next step is a cursor on `id`.
+`all({ limit, email })` is capped at 500 rows per read, ordered by `created_at desc`, and it is the
+one method on this class that reads a second table: the addresses on the page are matched against one
+`in` over `users` so each row can leave as `submitted_by`, and `email` — always the token's, which
+`api/self.js` writes into every browser request before the dispatcher runs — decides whose own
+address is kept on the way out. The page that uses it today fits well inside the cap; if the pile
+grows, the next step is a cursor on `id`.
 
 ## The pages
 
@@ -147,15 +152,16 @@ first, with three summary counts at the top:
 - Percentage who answered *yes* to *solves_problem*.
 
 Each row shows its stars, the date, its yes/no, and any of the three text fields that came back
-non-null. Nothing on the page identifies a person: no email, and no name or surname either — the
-table has never carried those, so there is no join to a `users` row to resist.
+non-null. Nothing on the page identifies a person at all: the note is about the app, the pile is read
+by people who have never met its authors, and the one place a name appears is the `Submitted by`
+column of a file somebody chose to download.
 
-!!! warning "What 'never displayed' does and does not cover"
-    The page does not render the address, and neither does the PDF. The *response* from
-    `/api/self` still carries the whole row, because the export is written from that same read —
-    so the address is in the browser's memory and in the Network tab for anyone who looks.
-    Rendering it nowhere is not the same as sending it to nobody. See
-    [Deliberate limits](#deliberate-limits) for the open choice here.
+!!! info "The read is where the rule is settled"
+    The page renders no address because the *response* carries none to render. `Feedback.all` names
+    every row before it leaves the server and drops the address unless it belongs to the caller, so
+    an address a browser was never sent cannot be printed by that browser — in a table cell, in a
+    tooltip, or in a file built from the same read. This closes what used to be an open question here:
+    "not displayed" used to be a statement about the interface and nothing about the transport.
 
 ## Exports
 
@@ -167,7 +173,7 @@ like; `FeedbackFetch` names seven columns and the rest follows.
 | Column | In the file | On the screen |
 | --- | --- | --- |
 | Rating | `4/5` as text | stars, drawn |
-| Submitted by | **the address — in the file only** | not rendered |
+| Submitted by | **the name and surname — in the file only** | not rendered |
 | Submitted | date and time, as the reader's locale renders them | the same, top right of each card |
 | Solved problem | `yes` / `no` | same |
 | Most challenging / Improvements / Missing | one column each, wrapped, never merged | three blocks under the header, each omitted when empty |
@@ -185,9 +191,11 @@ Three things about the write path are worth stating plainly:
   500-row cap, so the file matches the question "what is in there now" rather than "what was on
   my screen when I arrived". Empty pile, empty click: the writer refuses with a sentence instead
   of producing a file with a header row in it.
-- **A file with addresses in it has no access control.** That is the point of it — it is the
+- **A file with names in it has no access control.** That is still the point of it — it is the
   version that can be handed over as evidence — and it is also why the button is on a page rather
-  than in a scheduled report: somebody has to decide to take the pile with them.
+  than in a scheduled report: somebody has to decide to take the pile with them. What it no longer
+  carries is a sign-in. The rule that an email address belongs only to the person it names is
+  enforced at the read, so a download cannot leak what the server never sent.
 
 ## Deliberate limits
 
@@ -199,10 +207,11 @@ Three things about the write path are worth stating plainly:
 - **No moderation queue.** Because the pile is open to every signed-in reader, the discipline
   is social rather than technical: whatever you write can be read by your own fellow-members,
   so write what you would say out loud. The submit page says this at the top.
-- **A reply is possible and nowhere provided for.** The address is on every row, so a reply can
-  happen; there is no reply form, no inbox and no "we'll be in touch" copy. If it happens, it
-  happens outside the app.
-- **The read still ships addresses to the browser.** Closing that is a small, deliberate change —
-  strip `email` in `Feedback.all` for the display read and give the export its own read that asks
-  for it — and it has not been made, because it also decides *who* may hold an address at all.
-  Until it is, "not displayed" is a statement about the interface, not about the transport.
+- **A reply is possible in the database and nowhere in the app.** The address is on every row, so
+  whoever can read the table can answer a note; there is no reply form, no inbox and no "we'll be in
+  touch" copy, and the exports no longer carry the address. If a reply happens it is arranged outside
+  the app by somebody with more access than a download.
+- **The naming read is app-wide, the way the table is.** One `in` over `users` answers for every note
+  on the page, and `users` knows nothing about which fellowship an address belongs to — so a name can
+  reach a reader who has never shared a community with the person who wrote it. That is what a
+  cross-community pile costs, and the alternative was the address itself.

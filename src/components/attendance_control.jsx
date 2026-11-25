@@ -165,7 +165,10 @@ function ManageCard({ one, admin, communityId, onChanged, onCancelled }) {
         <span className={`tag ${status}`}>{tag}</span>
       </p>
       <p className="who">
-        {one.mine ? "You opened" : `${one.created_by} opened`} this register {day(one.started_at)}, from{" "}
+        {/* Whoever opened it is said in words. This card is read by the rest of the community's
+            leaders, and the sign-in one of them logged in with tells nobody anything they need —
+            the same rule the roster and the function register are held to. */}
+        {one.mine ? "You opened" : "A leader opened"} this register {day(one.started_at)}, from{" "}
         <strong>{clock(one.started_at)}</strong> to <strong>{clock(one.ended_at)}</strong> — taking
         check-ins {reach(one)}.
       </p>

@@ -56,6 +56,14 @@ Each endpoint answers in a fixed order, sharing the `lib/god.js` dispatcher and 
    says present the write is refused. A yes is a fact about a day that has gone by; letting it
    be talked back into a no would make the record say whoever edited the list rather than who
    was in the room.
+6. The **member's half of a function** — `church_function` `available`, `rsvp` and `respond` — answers
+   to the **self** door, and it is the one place on that door where a `community_id` is checked rather
+   than taken on trust: the endpoint reads `community_members` for the address on the token and refuses
+   `403` when there is no link, so an id typed into a url cannot open another fellowship's function.
+   The rest is shape: `function_id` has to be digits, `attending` has to be `true` or `false`, a
+   `proof_path` has to look like a web address, and an `expected_pay_date` has to be `YYYY-MM-DD`. The
+   address written on both child rows is the token's, and `confirmed_by` and `confirmed_at` are never
+   forwarded — signing a receipt off is a leader's act, and the screen for it has not been built.
 
 `api/health.js` is the only other endpoint, and it reads nothing.
 
@@ -98,6 +106,7 @@ So the split today is:
 | `/qr` landing — phone that scanned the QR; also signs a first-timer up inline and adds them to the fellowship | Firebase auth + `/api/self` `event` `checkin`, `community` `join_at_session` |
 | Feedback — the form every member can reach from the menu, and the pile everyone can read | `/api/self` `feedback` `create` / `all` |
 | Functions — a leader or an admin plans a gathering, reads its tallies, and opens one out to see who has answered | `/api/leader` `church_function` `list` / `create` / `details` |
+| Available functions and the RSVP — any member sees what is still to come and answers for themselves | `/api/self` `church_function` `available` / `rsvp` / `respond` |
 
 The leader pages are the admin ones with nothing to click: the roster arrives without the
 ⋮ menu that changes a role or takes somebody out, and no leader page asks the function for
@@ -126,6 +135,25 @@ it. Duplicating it at the bottom is fine and is what the testimonies pages do, b
 after a version at the top. A one-line comment above each block says why the placement is
 deliberate, so it does not get "tidied" back into reading order later.
 
+The way back to a dashboard was, until recently, only a way back to the communities list. Six pages
+that a dashboard opens — the register of functions, one function opened out, the servings list, the
+take-attendance page, the list of what is still to come and a member's RSVP under it — carried
+`Back to your communities` and nothing else, so a leader who came from the admin dashboard had to open
+the menu and find the dashboard among the links.
+They now show `Back to the dashboard` in the same corner of the header whenever the navigation that
+arrived carried a role, and keep the communities link when it did not: every one of these pages is also
+reachable from the community list, and from there a dashboard is not where the reader came from. The
+role travels as navigation state — the three dashboards put it on the way down, and the pages that sit
+between a dashboard and an answer pass it on rather than dropping it — because it is a fact the click
+already knew. Re-reading `community_members` to rediscover it would cost a request per page for a fact
+the caller never forgot, and guessing is not a better answer than knowing: the three dashboards
+are three different screens, and the wrong one is not the way back. A page reached without a role, by a
+bookmark or a typed address, renders no dashboard link at all rather than inventing one. The route each
+role was looking at lives in `src/components/back.jsx` beside the link itself, so the three names
+cannot be re-spelled differently per page. The two feedback pages take the same way back in their own
+shape — a link above the pile, a button beside the thank-you — because they are mounted outside the
+header pattern that the community pages share.
+
 ## The one place the read disagrees with the table
 
 `services` and `service` in `src/functions/attendance.js` compare each gathering's day with
@@ -153,16 +181,33 @@ instead.
 - **The three function tables are gated the same way**, and this one was asked on 2026-11-24
   rather than 2026-11-14, through the dispatcher the endpoints use and against every community
   in the project. The browser key read **0 rows** out of `functions` where the service key read
-  the table unhindered; the service key found 0 planned functions across all seven communities,
-  which is what the functions page shows as "nothing has been planned for this community yet".
+  the table unhindered; the service key found 0 planned functions across all seven communities at
+  that moment, which is what the functions page shows as "nothing has been planned for this
+  community yet" — the dummy fellowships have since been given a calendar of 42 and 18 planned
+  functions, with 763 answers under them, by `seed-dummy-data.mjs`. That seed now also tops up
+  whichever of the four tables a person on either dummy roster came up short in, so none of the
+  twenty-two dummy people reads as a blank on a screen. What it invents for the money tables sits only
+  beside a *coming* answer, so no dummy person appears in two of the opened function's sections at
+  once; the rule is in [Database](database.md).
   A `church_function` `list` with no `community_id` is refused by the dispatcher, in words:
   `params.community_id is required for 'list'`. The same was then asked of `details`, the read
   behind an opened function: both halves are required (`params.function_id is required for
   'details'` and its community twin), an id matching no row is answered as `there is no such
   function` rather than as an empty page, and the browser key was turned away the same way the
-  list read was. What this probe did **not** do is write: neither `amount_matches_payment` nor
-  `paid_fields_match` has been answered with a refused insert, and nothing writes the two child
-  tables at all yet, so no real answer row has passed through `details` either.
+  list read was. Writing has been asked of the same door since, through the member's `respond`: one
+  paid function was created, answered with a receipt, then with a promised day, then with neither, and
+  both child tables took exactly the rows `paid_fields_match` allows — three answers left one row, and
+  a free function wrote no money row at all. What still has not been answered is a *refused* insert: no
+  row has been pushed against either check on purpose to hear `23514` come back. The browser key could
+  neither list nor write, and the anon-key write is turned away as `there is no such function`, because
+  RLS hides the `functions` row before the class ever compares its community.
+- **The register's tallies are counted by the database**, in the one read that lists the functions,
+  and the shape was checked against the seeded calendar rather than assumed: 42 functions came back in
+  one request with `going`, `paid` and `promised` on each row, every count matched a tally made row by
+  row over the 440 answers, and the read went from 26 KB in three requests to 13 KB in one. The trap
+  this found is in [Database](database.md): the condition each tally counts has to be sent as a filter
+  on the aggregate's alias, because the same condition written inside the `select` string is accepted
+  without an error and counts the wrong rows.
 - **A member has one attendance row per event.** `event` is unique on
   `(community_id, event_date, event_name, user_email)`; a second insert with those four
   values is refused with `23505`. A check-in can be sent as many times as the network
@@ -249,7 +294,9 @@ instead.
   community, and the table has no `community_id` for a per-community question to ask, so the
   only gate on reading it is being signed in. The email that lands on a row is always the
   token's and never the body's: every note is signed, which is what makes it count as evidence
-  rather than noise, and no screen in the app prints the address. Details in
+  rather than noise. What a reader is handed instead is a name — the read matches its addresses
+  against `users` and the exports print `Submitted by` from that, so no screen and no file in
+  the app carries an address that is not the reader's own. Details in
   [Feedback](feedback.md).
 
 ## What is not enforced yet
@@ -265,6 +312,19 @@ withheld. The first two are still ahead of us, not behind us:
 - **`addTestimony` records whatever `user_email` the caller passes**, and a `date` that
   need not be today, because the insert runs in the browser and nothing between that page
   and the table checks either.
+- **A proof of payment is a public link, and nobody signs it off.** The receipt goes from the browser
+  straight into the `kopano` bucket on the anon key and the row stores the public url, so anybody
+  holding that link opens the document — the name is a `crypto.randomUUID()`, so it is not guessable,
+  but it is forwardable, and nothing stands between the url and the file. It is the reach a
+  testimony's pictures already have, now over a bank statement. The app has also stopped hiding that
+  reach: the RSVP page and the leader's *Proof* column open the file on the screen through
+  `src/components/proof_viewer.jsx` instead of printing its address, which makes the document easier to
+  look at without putting anything between the url and the file. The dialog hands out no address of its
+  own — the file, a maximise and a *Save the file*, and that last one fetches the bytes and stores them
+  rather than being a link dressed as a download, which the bucket's cross-origin answer allows and a
+  `download` attribute on another host's file does not. The second half is a missing feature
+  rather than a hole: no path writes `confirmed_by` or `confirmed_at`, so a receipt a member uploaded
+  sits in *waiting for a leader* on the opened function until somebody builds the confirm action.
 - **The PIN, the time window and the distance are checked in the request handler, not by a
   Postgres function.** No `supabase.rpc(...)` call exists anywhere in `src/` or `api/` — the
   rule lives in `src/functions/session.js` and is enforced every time a browser asks for
@@ -282,15 +342,26 @@ withheld. The first two are still ahead of us, not behind us:
   the windows taking arrivals right now, and `live` adds the sessions scheduled for later so every
   phone in the fellowship can be shown what is coming; the leader's `manage` is the one read that
   carries a PIN, and only to its opener or an admin.
-- **An address is hidden by the pages, not withheld by the function.** `admin` `roster` still
-  answers `email` for every person in the community, and `attendance` `service` still answers
+- **An address is hidden by the pages, and one function now withholds it too.** `admin` `roster`
+  still answers `email` for every person in the community, and `attendance` `service` still answers
   `email` for every attendee, because the roster row, the ⋮ menu and the two write calls are keyed
   by that address. What changed is what is drawn: no column, popup, card, tooltip or exported cell
-  prints an address that is not the reader's own, and the dashboard search no longer matches on one.
-  So a leader who opens their browser's network tab reads the whole list of addresses today exactly
-  as they did yesterday. Turning that into a refusal means giving the roster rows an id the function
-  resolves for itself, which is a change to what `assign` and `member` `remove` are asked for rather
-  than to what is drawn — deliberately not made here.
+  prints an address that is not the reader's own, and no search box matches on one either — the For-who
+  picker finds people by name now, which is what its own placeholder has always said it does.
+  The weak half of that claim was never the columns but the fallbacks: a label the `users` read could
+  not name comes back as the address it was keyed on, and a page printing that label prints the
+  sign-in with it. Two helpers settle the wording, one per kind of source — `named` in
+  `src/components/view_functions.jsx` for what a read hands over, `displayName` in
+  `src/components/absence_for.jsx` for a person picked out of a list — and every page that shows a
+  person goes through one of them. Two screens that had slipped through an earlier pass are closed
+  with it: the servings table no longer carries an *Address* column, and the dashboard's attendance
+  card says *A leader opened this register* where it had printed whoever opened it as their sign-in.
+  The read that goes further is the feedback pile, which names its rows before they leave the server
+  because a downloaded file is the same pile and the rule cannot stop at the edge of a screen.
+  So a leader who opens their browser's network tab reads the whole list of roster addresses today
+  exactly as they did yesterday. Turning that into a refusal means giving the roster rows an id the
+  function resolves for itself, which is a change to what `assign` and `member` `remove` are asked for
+  rather than to what is drawn — deliberately not made here.
 - **The notice is written in the member's own words, and the live column has not been told it
   may.** `api/self.js` stopped matching the reason against the five, and the box on both attendance
   pages takes any wording with the five offered only as suggestions. `Documentation-site/docs/database.md`

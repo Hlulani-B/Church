@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
 import servings from "../page_functions/servings.js";
 import Menu from "../components/menu.jsx";
-import BackToCommunities from "../components/back.jsx";
+import BackToCommunities, { BackToDashboard } from "../components/back.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
 const accounts = new Auth();
@@ -223,7 +223,13 @@ export default function ServingsPage() {
           <Menu />
         </div>
         <a className="logo serif" href="/community">Kopano</a>
-        <BackToCommunities />
+        {/* The dashboard that opened this page is the way out of it. Reached with no role — a
+            bookmark, a typed url — there is no dashboard to name, so the communities link stands. */}
+        {route?.role ? (
+          <BackToDashboard role={route.role} state={admin} />
+        ) : (
+          <BackToCommunities />
+        )}
       </div>
 
       <main className="main">
@@ -246,10 +252,12 @@ export default function ServingsPage() {
               <div className="tablewrap">
                 <table>
                   <thead>
+                    {/* No Address column: this list is read by whoever leads or admins the community,
+                        and an address is how the people in it sign in rather than who they are. The
+                        row is still keyed on it, because that is what the serving is written against. */}
                     <tr>
                       <th>Name</th>
                       <th>Surname</th>
-                      <th>Address</th>
                       <th>Role</th>
                     </tr>
                   </thead>
@@ -265,7 +273,6 @@ export default function ServingsPage() {
                           </div>
                         </td>
                         <td data-label="Surname">{one.surname}</td>
-                        <td data-label="Address">{one.email}</td>
                         <td data-label="Role">
                           <RoleCell one={one} canManage={canManage} onSave={onSaveRole} />
                         </td>

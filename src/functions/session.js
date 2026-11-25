@@ -231,14 +231,22 @@ export class Session {
       .gte('ended_at', new Date().toISOString())
       .order('started_at', { ascending: false })
     if (error) throw error
-    return (data || []).map((one) => ({
-      ...one,
-      mine: one.created_by === email,
-      // The digits travel only to the person who opened them and to an admin of the community.
-      pin: one.mine || admin ? one.pin : null,
-      near_required:
-        one.allow_any_radius !== true && one.radius !== null && one.radius !== undefined,
-    }))
+    return (data || []).map((one) => {
+      /*
+        Decided off the row rather than off the object being built: an object literal cannot read a
+        key it is still writing, so reading `one.mine` here would be reading nothing and the digits
+        would reach only an admin — never the leader who opened the check-in and needs them on screen.
+      */
+      const mine = one.created_by === email
+      return {
+        ...one,
+        mine,
+        // The digits travel only to the person who opened them and to an admin of the community.
+        pin: mine || admin ? one.pin : null,
+        near_required:
+          one.allow_any_radius !== true && one.radius !== null && one.radius !== undefined,
+      }
+    })
   }
 
   /*

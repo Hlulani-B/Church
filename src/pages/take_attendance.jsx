@@ -5,7 +5,7 @@ import { SessionFetch } from "../page_functions/session.js";
 import { NO_PLACE, clock, readPosition } from "../page_functions/place.js";
 import { adminState } from "../admin/state.js";
 import Menu from "../components/menu.jsx";
-import BackToCommunities from "../components/back.jsx";
+import BackToCommunities, { BackToDashboard } from "../components/back.jsx";
 import QrCard from "../components/qr_code.jsx";
 
 const accounts = new Auth();
@@ -244,7 +244,11 @@ export default function TakeAttendancePage() {
           <Menu />
         </div>
         <a className="logo serif" href="/community">Kopano</a>
-        <BackToCommunities />
+        {route?.role ? (
+          <BackToDashboard role={route.role} state={admin} />
+        ) : (
+          <BackToCommunities />
+        )}
       </div>
 
       <main className="main">

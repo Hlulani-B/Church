@@ -6,7 +6,7 @@ import CreateFunction from "../components/create_function.jsx";
 import ViewFunctions, { pretty } from "../components/view_functions.jsx";
 import IndividualFunction from "../components/individual_function.jsx";
 import Menu from "../components/menu.jsx";
-import BackToCommunities from "../components/back.jsx";
+import BackToCommunities, { BackToDashboard } from "../components/back.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
 const accounts = new Auth();
@@ -128,7 +128,13 @@ export default function FunctionsPage() {
           <Menu />
         </div>
         <a className="logo serif" href="/community">Kopano</a>
-        <BackToCommunities />
+        {/* The register and a function opened out of it share this page, so this is the way back to
+            whichever dashboard opened it for either of them. */}
+        {route?.role ? (
+          <BackToDashboard role={route.role} state={admin} />
+        ) : (
+          <BackToCommunities />
+        )}
       </div>
 
       <main className="main">

@@ -6,6 +6,7 @@ import AdminMenu from "./menu.jsx";
 import BackToCommunities from "../components/back.jsx";
 import AttendanceControl from "../components/attendance_control.jsx";
 import SessionLive from "../components/session_live.jsx";
+import AvailableFunctions from "../components/available_functions.jsx";
 import { adminState, rememberAdmin } from "./state.js";
 import servings from "../page_functions/servings.js";
 
@@ -458,7 +459,7 @@ export default function AdminDashboard() {
             <button
               className="primary"
               type="button"
-              onClick={() => navigate("/take-attendance", { state: heading })}
+              onClick={() => navigate("/take-attendance", { state: { ...heading, role: "admin" } })}
             >
               Take attendance
             </button>
@@ -476,7 +477,7 @@ export default function AdminDashboard() {
             </button>
             <button
               type="button"
-              onClick={() => navigate("/feedback/all")}
+              onClick={() => navigate("/feedback/all", { state: { ...heading, role: "admin" } })}
             >
               Read feedback
             </button>
@@ -492,6 +493,10 @@ export default function AdminDashboard() {
             >
               Functions
             </button>
+            {/* Planning a function and being invited to one are different buttons: the one above
+                reads everybody's answers, this one is the admin's own standing under the plans that
+                have not happened yet, exactly as a member sees them. */}
+            <AvailableFunctions state={{ ...heading, role: "admin" }} />
           </div>
         )}
 

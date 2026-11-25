@@ -18,8 +18,9 @@ const functions = new ChurchFunctionsFetch();
   assembled in the first place.
 
   The columns are the ones a leader scans for a decision — what, when, where, what it costs, and how
-  many have answered. The three counts come from the two tables under each function, in one read each
-  for the whole list, so thirty functions cost three queries rather than sixty-one.
+  many have answered. The three counts are made by the database on the same read that lists the
+  functions, so the register costs one request whatever the fellowship has planned, and the answer
+  rows themselves never cross the wire to be counted here.
 */
 
 const css = `
@@ -58,7 +59,15 @@ const css = `
   .vf td::before{content:attr(data-label);flex:none;width:72px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#666;font-weight:600}
   .vf td>*,.vf td{min-width:0;overflow-wrap:anywhere}
   .vf td.tally{justify-content:space-between}
-  .vf td.open{justify-content:flex-end}
+  /*
+    The desktop table holds this last column at 1% wide, which is a trick for a real table column and
+    a literal handful of pixels in a card: the button was squeezed into that sliver and its own words
+    ran out over the cell, which is why it read as tiny and cut off. The width is dropped with the
+    table it belonged to, so the cell takes the row's whole width and the button keeps its own size on
+    one line, with enough padding to be a comfortable thumb target.
+  */
+  .vf td.open{width:auto}
+  .vf td.open button{flex:none;width:auto;min-width:0;white-space:nowrap;overflow-wrap:normal;padding:12px 18px;font-size:15px}
 }
 `;
 
@@ -71,6 +80,17 @@ export function pretty(date) {
   return Number.isNaN(read.getTime())
     ? date
     : read.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+}
+
+/*
+  A person in words, or the asking page's own words for there being no name. Every label the reads hand
+  out falls back to the email when the `users` table holds nobody by that address, which is sound
+  advice for a row that has to be keyed on something and the one thing a screen must not print: an
+  address is how somebody signs in, not who they are. So a page asks this with the label, the address
+  behind it, and what to say where the two are the same thing.
+*/
+export function named(label, email, missing) {
+  return label && label !== email ? label : missing;
 }
 
 // A price, or the plain word for there not being one — a blank reads as a number nobody typed. The

@@ -14,9 +14,15 @@ were made to the live database during the audit.
 | 6 | Data-access classes are inconsistent about environment and guards | Minor | Shared client and guards |
 | 7 | `/api/god` rejected every genuine Firebase id token | Critical | Parse only the two JSON segments |
 | 8 | An admin screen could show another community's roster | Major | Tag every read with the community that answered |
+| 9 | The four digits never reached the leader who opened the check-in | Major | Decide `mine` off the row, not off the object being built — **[Fixed]** |
+| 10 | One button handed every feedback author's address to whoever downloaded the pile | Major | Name the rows at the read, and close the last fallbacks — **[Fixed]** |
 
 Findings 1 to 6 are the 2026-11-13 data-layer audit. Findings 7 and 8 are the sign-in path
-and the admin screens, both found on 2026-11-14; 7 is marked **[Fixed]** below.
+and the admin screens, both found on 2026-11-14; 7 is marked **[Fixed]** below. Finding 9 is
+not from an audit at all — it was found on 2026-11-25 by the test that specifies it, which had
+been failing quietly while the suite was read as a whole. Finding 10 came from the same day's
+sweep, taken once the rule about addresses was written down as a rule for the whole app rather
+than a rule for the page being looked at.
 
 ## 1. Attendance and testimony data is world-readable and world-writable
 
@@ -228,6 +234,73 @@ offset belongs to the community it was walked through instead of carrying over.
 **Lesson, for the next read added here.** A page whose subject can change underneath it
 must tag what it holds with that subject. Passing the id into the query is necessary and
 not enough; the state on the other side of the promise needs it too.
+
+## 9. The four digits never reached the leader who opened the check-in — **[Fixed]**
+
+Found 2026-11-25 by `tests/session-manage.test.js`, which asserts that the person who opened a
+session is sent their own PIN. The assertion had been red: `session.manage` answered `pin: null`
+for every caller except an admin.
+
+**Cause.** Two keys of one object literal, in `manage` in `src/functions/session.js`:
+
+```js
+return (data || []).map((one) => ({
+  ...one,
+  mine: one.created_by === email,
+  pin: one.mine || admin ? one.pin : null,
+}))
+```
+
+`one` is the row that came back from the table, and `mine` is a key of the object being built, not of
+that row — an object literal cannot read a key it is still writing. So `one.mine` was `undefined` for
+every caller and the ternary fell through to `null`: the dashboard's card never carried digits for the
+person who opened it, only for an admin. The take-attendance page still showed them straight after the
+create, because there the row arrives from the write itself rather than from `manage`, which is why
+using the app did not notice. Back on the dashboard the card stood there with `mine: true` on it and
+neither a PIN line nor a QR, because `src/components/attendance_control.jsx` renders both only
+`if (one.pin)` — the honest reaction to a row that says nothing, and the reason nothing looked broken
+in the way a crash would.
+
+**Fix.** Decide `mine` once, off the row, in a block body, and let both keys read that local.
+
+**Lesson, for the next field derived in a `map`.** A key built in an object literal is not on the
+object yet, so a second key that depends on it is reading `undefined` and not the value you can see a
+few lines above. Two derived keys that talk to each other want a local and a block body. And a red
+test in a suite that mostly passes is a finding, not background noise: this one was specified, written
+and left failing.
+
+## 10. One button handed every feedback author's address to whoever downloaded the pile
+
+**Found.** On 2026-11-25, once the rule about addresses had been written down — a person sees only
+their *own* email address, and everybody else by name and surname — the whole app was swept for the
+ones still breaking it. Nearly every page was already clean: what a reader sees in a heading or in
+"Recorded against …" is their own address, and the roster, the register and the RSVP page all name
+their people. Two things were not. `displayName` in `src/components/absence_for.jsx` fell back to a
+person's address when their `users` row held no name, and that string is what the For-who picker
+prints and what both attendance pages put into "Recorded for X". And the pile's export carried an
+`email` column, so *Export Excel* and *Download PDF* wrote the sign-in of every person who had ever
+left a note.
+
+**Cause.** The rule had been enforced where a value is drawn and not where it is decided, so a
+fallback written as keying advice — *a label the `users` read could not name comes back as the address
+it was keyed on*, which is sound advice for a row that has to be keyed on something — became a leak the
+moment a page printed that label as a name. The export was the same mistake with a longer fuse. Its
+own comment argued the case: the address "belongs in a file somebody chose to download, not on a page
+every signed-in stranger can scroll". That is a rule about screens and no rule at all about files, and
+a file is the half that gets forwarded.
+
+**Fix.** `displayName` answers a nameless row in words, and the For-who search matches names only —
+which is what its own placeholder has always said it does. `Feedback.all` now reads `users` once over
+the addresses on the page and returns `submitted_by`, keeping the bare address only where the note is
+the caller's own, so the export column cannot print what the response never carried. `email` reaches
+that method through `api/self.js`, which already writes the token's address into every browser
+request, so no endpoint, no dispatcher and no table changed. Locked by `tests/feedback.test.js`.
+
+**Lesson.** A rule about what is displayed is only a rule about the last mile. Wherever one read feeds
+both a screen and a file, the check belongs at the read: a page can be rewritten, a tooltip can be
+added, and tomorrow's export will happily carry whatever today's response shipped. Keeping the caller's
+own address in the answer is the part that needs stating out loud, too — otherwise the honest reading of
+"nobody sees an address" is a page that cannot tell a reader whose note is theirs.
 
 ## How this was tested
 

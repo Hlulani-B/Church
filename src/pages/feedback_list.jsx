@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import Menu from "../components/menu.jsx";
 import { FeedbackFetch } from "../page_functions/feedback.js";
 
@@ -27,6 +27,7 @@ const css = `
 .fx h1{font-size:34px;line-height:1.15;margin:0 0 8px}
 .fx .lede{color:var(--muted);margin:0 0 32px}
 .fx .top{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 24px}
+.fx .backs{display:flex;gap:18px;flex-wrap:wrap}
 .fx .back{color:var(--ink);text-decoration:none;border-bottom:1px solid currentColor;font-size:14px;font-weight:600}
 .fx .tools{display:flex;gap:8px;flex-wrap:wrap}
 .fx .write{display:inline-block;padding:9px 18px;background:#111;color:#fff;border-radius:2px;text-decoration:none;font-size:14px;font-weight:600}
@@ -68,6 +69,9 @@ function Starline({ n }) {
 }
 
 export default function FeedbackList() {
+  // The role whose dashboard opened this list. Nothing here is about a community, but the screen
+  // is still reached from one person's dashboard, and that is the page they expect to return to.
+  const role = useLocation().state?.role;
   const [rows, setRows] = useState([]);
   const [state, setState] = useState("loading");
   const [error, setError] = useState("");
@@ -126,7 +130,14 @@ export default function FeedbackList() {
       </header>
       <main className="main">
         <div className="top">
-          <Link to="/community" className="back">← Your communities</Link>
+          <div className="backs">
+            {role && (
+              <Link to={`/${role}-dashboard`} className="back">
+                ← The {role} dashboard
+              </Link>
+            )}
+            <Link to="/community" className="back">← Your communities</Link>
+          </div>
           <span className="tools">
             <Link to="/feedback" className="write">Write feedback</Link>
             <button className="btn" type="button" disabled={state !== "ready" || !!writing} onClick={() => writeOut("excel")}>

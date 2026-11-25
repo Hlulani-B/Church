@@ -1,0 +1,43 @@
+# Every ten minutes, knock on the standalone server and make it write 4 into `keep-alive`.
+#
+# Two jobs at once. The service runs on Render's free plan, which puts a web process that nobody
+# calls to sleep, so a request on a timer is what keeps it awake; and because the route writes to
+# Supabase and deletes the row again rather than only answering, a green run means the whole path
+# worked — url, process, Supabase client, service key, insert, delete — not merely that something was
+# listening. Nothing is left in `keep-alive`, because this fires 144 times a day and the log line is
+# the same proof the row would have been: the server prints "2 + 2 = 4 has been written in the
+# database" (server/src/routes/keep_alive.js) and this run prints the response that says so. A failed
+# run is worth reading too — `insert_failed` and `delete_failed` are different problems, and a table
+# that keeps rows it was supposed to clean up is one of them.
+#
+# The url comes from the root render.yaml, whose one service is named `church-server`. Rename or
+# move that service and this stops working, so a repository variable can override the default:
+# Settings → Secrets and variables → Actions → New repository variable → `SERVER_URL`.
+
+name: keep-alive
+
+on:
+  schedule:
+    # */10, in UTC, on any runner timezone.
+    - cron: '*/10 * * * *'
+
+  # Asked for by hand, so the first heartbeat does not have to wait for the next ten-minute mark to
+  # find out whether any of this is wired up correctly.
+  workflow_dispatch:
+
+jobs:
+  write:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: POST /keep-alive
+        env:
+          SERVER_URL: ${{ vars.SERVER_URL || 'https://church-server.onrender.com' }}
+        run: |
+          # --fail-with-body turns a 4xx or 5xx into a failed run while still printing what the
+          # server said, and --max-time 90 is generous on purpose: a free instance that has fallen
+          # asleep spends most of that waking up, and a slow boot is not the same as a broken route.
+          curl --fail-with-body --silent --show-error \
+               --request POST --max-time 90 \
+               "$SERVER_URL/keep-alive"
+          echo

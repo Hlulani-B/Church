@@ -70,9 +70,21 @@ halves of this project reach Supabase through the same product and through entir
 It is deployed by the [`render.yaml`](https://github.com/Hlulani-B/Church/blob/main/render.yaml) at
 the repository root — a blueprint, so Render builds and starts that folder from what the file says
 rather than from a dashboard form somebody filled in once. Worth saying plainly: the routes
-mounted there today are `/health` and `/servings`, and neither asks who is calling — no bearer check,
-no role gate, no community gate, none of the tiers `api/*` keeps. Whatever gets mounted there has to
-earn that before it is pointed at real people's rows.
+mounted there today are `/health`, `/servings` and `/keep-alive`, and none asks who is calling — no
+bearer check, no role gate, no community gate, none of the tiers `api/*` keeps. Whatever gets mounted
+there has to earn that before it is pointed at real people's rows.
+
+### Keeping the free plan awake
+
+`plan: free` means Render parks the web process after a stretch without requests, so the first person
+to call it waits out a cold start. GitHub Actions knocks on it every ten minutes, in
+[`.github/workflows/keep-alive.yml`](https://github.com/Hlulani-B/Church/blob/main/.github/workflows/keep-alive.yml):
+a POST to `/keep-alive` and nothing else. That route writes the number 4 into the `addition` column of
+`keep-alive`, logs `2 + 2 = 4 has been written in the database`, and deletes the row it just made — a
+write and a delete on a timer, rather than 144 rows a day of 4s, and rather than an empty `/health`
+poll that can answer `ok` while the database is unreachable. The url is the blueprint's own service
+name; a repository variable `SERVER_URL` overrides it if the service is ever renamed or moved. The
+route takes no input and records nothing about the caller.
 
 ## File exports
 

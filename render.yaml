@@ -49,7 +49,11 @@ services:
       - key: CORS_ORIGINS
         sync: false
 
-    # Worth knowing before this goes public: routes/index.js mounts only /health and /servings today,
-    # and neither asks who is calling. Anything deployed as it stands is readable by anyone who knows
-    # the url, so give this service a secret or put an auth gate on the route before pointing the app
-    # at it. The api/ functions on Vercel keep their own bearer + role + community gates instead.
+    # Worth knowing before this goes public: routes/index.js mounts /health, /servings and /keep-alive
+    # today, and none asks who is calling. Anything deployed as it stands is readable by anyone who
+    # knows the url, so give this service a secret or put an auth gate on the route before pointing the
+    # app at it. The api/ functions on Vercel keep their own bearer + role + community gates instead.
+    #
+    # The free plan sleeps when nothing calls it, so .github/workflows/keep-alive.yml POSTs to
+    # /keep-alive every ten minutes. That route writes 4 into keep-alive.addition and takes the row
+    # straight back out, so the timer proves the database path without leaving a table of 4s behind.

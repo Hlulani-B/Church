@@ -124,6 +124,7 @@ describe('CommunityPurge.deleteAll — the order the rows go back out', () => {
       rows: {
         functions: [{ id: 9 }, { id: 11 }],
         function_attending: [{}, {}, {}],
+        prayer_topics: [{}, {}],
         testimony: [{}],
         community: [{}],
         community_members: [{}, {}],
@@ -148,11 +149,13 @@ describe('CommunityPurge.deleteAll — the order the rows go back out', () => {
     expect(byId.function_attending).toEqual([{ kind: 'in', col: 'function_id', vals: [9, 11] }])
     expect(byId.functions).toEqual([{ kind: 'eq', col: 'community_id', val: 4 }])
     expect(byId.testimony).toEqual([{ kind: 'eq', col: 'community_id', val: 4 }])
+    expect(byId.prayer_topics).toEqual([{ kind: 'eq', col: 'community_id', val: 4 }])
 
     expect(answer.community_id).toBe(4)
     expect(answer.functions).toBe(2)
     expect(answer.rows.function_attending).toBe(3)
     expect(answer.rows.testimony).toBe(1)
+    expect(answer.rows.prayer_topics).toBe(2)
     expect(answer.rows.event).toBe(0)
   })
 
@@ -172,6 +175,8 @@ describe('CommunityPurge.deleteAll — the order the rows go back out', () => {
     expect(client.deleted()).not.toContain('community_members')
     expect(client.deleted()).not.toContain('users')
     expect(client.deleted()).not.toContain('feedback')
+    // Everything else that carries the id goes, the newest table included.
+    expect(client.deleted()).toContain('prayer_topics')
   })
 })
 

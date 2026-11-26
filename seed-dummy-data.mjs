@@ -1643,4 +1643,542 @@ describe('seed dummy data (all tables, kept in DB)', () => {
       `  came: ${tally(true)}, sent word they would not: ${tally(false)}, written down only: ${tally(null)}`,
     )
   }, 60_000)
+
+  it('opens a third fellowship with a row in every table under its id', async () => {
+    /*
+      A whole community on its own, for the two things that can only be seen working end to end: the
+      screens, which until now have always been read across Grace Point and Stream of Hope; and the
+      delete-all-data button, which empties one fellowship out of every table that carries its id and
+      the files those rows point at.
+
+      This fellowship is the one the delete can actually be tried on. `created_by` is written as
+      baloyihlulani91@gmail.com, the address the app is signed in with, because the button refuses
+      anybody who did not open the community — and the two older dummy fellowships predate that
+      column, so they answer "set created_by on its row first".
+
+      Everything here is its own, too. The sample receipts go to a path with a fresh uuid in it under
+      `seed/cornerstone/`, the way the browser's uploader names a file, rather than to the shared
+      sample the fourth test points everybody at: a file only this community's rows hold is a file the
+      delete can be seen removing, and the folder belongs to nothing else, so a second run of this pass
+      takes its own pictures back out without touching anybody's.
+
+      It clears its own community first, so re-running replaces the fellowship instead of stacking a
+      second one with the same name.
+
+        npx vitest run --config vitest.encryption.config.js seed-dummy-data -t "third fellowship"
+    */
+    const NAME = 'Cornerstone Praise Fellowship'
+    const PREFIX = 'seed/cornerstone'
+
+    // --- 1. Whatever the last run left: the four tables under the functions go first, then the
+    //         ones that carry the community themselves, then the community, then its pictures.
+    const { data: previous } = await db.from('community').select('community_id').eq('name', NAME)
+    for (const one of previous || []) {
+      const { data: oldFunctions } = await db
+        .from('functions')
+        .select('id')
+        .eq('community_id', one.community_id)
+      const oldIds = (oldFunctions || []).map((row) => row.id)
+      if (oldIds.length) {
+        for (const table of [
+          'function_attending', 'function_paid', 'extra_function_attending', 'extra_function_paid',
+        ]) {
+          const { error } = await db.from(table).delete().in('function_id', oldIds)
+          if (error) throw new Error(`cleanup ${table}: ${error.message}`)
+        }
+      }
+      for (const table of [
+        'prayer_topics', 'extra_servings', 'extra_testimony', 'extra_event', 'extra_members',
+        'testimony', 'servings', 'event', 'session', 'functions', 'community_members',
+      ]) {
+        const { error } = await db.from(table).delete().eq('community_id', one.community_id)
+        if (error) throw new Error(`cleanup ${table}: ${error.message}`)
+      }
+      const { error } = await db.from('community').delete().eq('community_id', one.community_id)
+      if (error) throw new Error('cleanup community: ' + error.message)
+    }
+    const listUnder = async (folder) => {
+      const { data: entries, error } = await db.storage.from(BUCKET).list(folder, { limit: 1000 })
+      if (error) return []
+      const paths = []
+      for (const entry of entries || []) {
+        const path = `${folder}/${entry.name}`
+        if (entry.id) paths.push(path)
+        else paths.push(...(await listUnder(path)))
+      }
+      return paths
+    }
+    const staleFiles = await listUnder(PREFIX)
+    if (staleFiles.length) {
+      const { error } = await db.storage.from(BUCKET).remove(staleFiles)
+      if (error) console.log(`  (the last run's files are still in the bucket: ${error.message})`)
+    }
+    console.log(`cleanup: ${previous?.length || 0} old fellowship(s), ${staleFiles.length} stored files`)
+
+    // --- 2. users, then the community with the address that opened it, then the roster.
+    const { User } = await import('./src/functions/user.js')
+    const users = new User(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+    /*
+      Eight of the twenty-two, so this fellowship's screens read as a smaller church rather than the
+      same crowd again. Only ADMIN is an admin — the delete button is theirs to press and everybody
+      else's to be refused by.
+    */
+    const ROSTER = [
+      { email: ADMIN, role: 'admin' },
+      { email: 'thoko.mahlangu@example.com', role: 'leader' },
+      { email: 'zanele.kunene@example.com', role: 'leader' },
+      { email: 'joshua.dlamini@example.com', role: 'member' },
+      { email: 'grace.ndlovu@example.com', role: 'member' },
+      { email: 'annah.mokona@example.com', role: 'member' },
+      { email: 'kelvin.osei@example.com', role: 'member' },
+      { email: 'mmapula.sekhuhu@example.com', role: 'member' },
+    ]
+    for (const one of PEOPLE) {
+      const found = await users.find(one.email)
+      if (found) await users.update(one.email, { name: one.name, surname: one.surname })
+      else await users.create(one)
+    }
+
+    const { Community } = await import('./src/functions/community.js')
+    const communities = new Community(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+    const corner = await communities.create({ name: NAME, created_by: ADMIN })
+    await communities.update(corner.community_id, { join_id: 'STONE4' })
+    const id = corner.community_id
+
+    const { CommunityMember } = await import('./src/functions/community_members.js')
+    const links = new CommunityMember(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+    for (const one of ROSTER) {
+      await links.create({ email: one.email, community_id: id, role: one.role })
+    }
+    const nameOf = Object.fromEntries(PEOPLE.map((one) => [one.email, one]))
+    const label = (email) => `${nameOf[email]?.name || ''} ${nameOf[email]?.surname || ''}`.trim() || email
+    const leaders = ROSTER.filter((one) => one.role !== 'member').map((one) => one.email)
+    console.log(`\n${NAME} (${id}), join code STONE4, opened by ${ADMIN}: ${ROSTER.length} people`)
+
+    /*
+      --- 3. A file of this community's own. The browser's uploader puts every file at a path with a
+             fresh uuid in it, which is what lets the purge delete a file without worrying that
+             somebody else's row points at the same one; this keeps that shape under its own folder.
+             A photograph is fetched when there is internet to fetch it with, so the picture viewer
+             holds a real image, and falls back to a written page when there is not.
+    */
+    const uploaded = []
+    async function freshFile(email, kind) {
+      const folder = folderOf(email)
+      const uuid = crypto.randomUUID()
+      const chosen = kind === 'image' ? await photoOf(email) : null
+      const made =
+        chosen ||
+        pdfOf([
+          'Proof of payment (sample)',
+          '',
+          `Paid by: ${label(email)}`,
+          `Email : ${email}`,
+          'Reference: CORNERSTONE SEED',
+          '',
+          'Written by the third-fellowship pass of seed-dummy-data.mjs.',
+          'It belongs to this community alone, so deleting the community',
+          'can be seen deleting it too.',
+        ])
+      const path = `${PREFIX}/${folder}/${uuid}.${made.ext}`
+      const { error } = await db.storage.from(BUCKET).upload(path, made.file, { contentType: made.file.type })
+      if (error) throw new Error(`upload ${path}: ${error.message}`)
+      uploaded.push(path)
+      return db.storage.from(BUCKET).getPublicUrl(path).data.publicUrl
+    }
+
+    // --- 4. session: one Sunday that has gone by, one called off, one still to come.
+    const { Session } = await import('./src/functions/session.js')
+    const sessions = new Session(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+    const opened = async (day, name, leader, radius, from = '09:00:00', until = '11:00:00') =>
+      sessions.create({
+        community_id: id,
+        pin: (await sessions.pin()).pin,
+        created_by: leader,
+        date: day,
+        started_at: `${day}T${from}+02:00`,
+        ended_at: `${day}T${until}+02:00`,
+        event_name: name,
+        latitude: JHB.latitude,
+        longitude: JHB.longitude,
+        radius,
+        allow_any_radius: radius === null,
+      })
+    const lastSunday = await opened('2026-11-22', 'Sunday Service', leaders[0], 150)
+    const prayer = await opened('2026-11-18', 'Prayer Meeting', leaders[1], null, '18:00:00', '19:30:00')
+    const cancelled = await opened('2026-11-08', 'Sunday Service', leaders[0], 150)
+    await sessions.update(cancelled.session_id, { cancel: true })
+    await opened('2026-12-06', 'Sunday Service', leaders[0], 150)
+    console.log('session: 4 opened, one of them cancelled')
+
+    // --- 5. event: arrivals under a real session, notices of their own, and apologies the admin
+    //         typed for somebody else, which is the shape the For-who box writes.
+    const { Event } = await import('./src/functions/event.js')
+    const gatherings = new Event(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+    const arrive = (email, session, offset, at) =>
+      gatherings.record({
+        community_id: id,
+        event_date: session.date,
+        event_name: session.event_name,
+        user_email: email,
+        attend: true,
+        reason: null,
+        recorded_by: email,
+        session_id: session.session_id,
+        checked_in_at: `${session.date}T${at}`,
+        checkin_latitude: near(offset).latitude,
+        checkin_longitude: near(offset).longitude,
+        latitude: session.latitude,
+        longitude: session.longitude,
+      })
+    await arrive(ADMIN, lastSunday, 0, '09:04:00+02:00')
+    await arrive('thoko.mahlangu@example.com', lastSunday, 1, '09:09:00+02:00')
+    await arrive('joshua.dlamini@example.com', lastSunday, 2, '09:14:00+02:00')
+    await arrive('grace.ndlovu@example.com', lastSunday, -1, '09:22:00+02:00')
+    await arrive('kelvin.osei@example.com', lastSunday, -2, '09:35:00+02:00')
+    await arrive('zanele.kunene@example.com', prayer, 0, '18:03:00+02:00')
+    await arrive('annah.mokona@example.com', prayer, 1, '18:07:00+02:00')
+    await gatherings.record({
+      community_id: id, event_date: '2026-11-22', event_name: 'Sunday Service',
+      user_email: 'mmapula.sekhuhu@example.com', attend: false, reason: 'Transport',
+      recorded_by: 'mmapula.sekhuhu@example.com',
+    })
+    await gatherings.record({
+      community_id: id, event_date: '2026-11-22', event_name: 'Sunday Service',
+      user_email: 'zanele.kunene@example.com', attend: false, reason: 'Work', recorded_by: ADMIN,
+    })
+    await gatherings.record({
+      community_id: id, event_date: '2026-12-06', event_name: 'Sunday Service',
+      user_email: 'annah.mokona@example.com', attend: false, reason: 'Family', recorded_by: ADMIN,
+    })
+    await gatherings.record({
+      community_id: id, event_date: '2026-12-06', event_name: 'Sunday Service',
+      user_email: 'joshua.dlamini@example.com', attend: null, reason: null, recorded_by: null,
+    })
+    console.log('event: 11 rows — 7 arrivals, 2 own notices, 2 recorded for somebody else')
+
+    // --- 6. functions, and the two tables that answer them.
+    const { ChurchFunctions } = await import('./src/functions/church_functions.js')
+    const planner = new ChurchFunctions(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+    const NAMES = [
+      'Thanksgiving Night', 'Youth Vigil', 'Ladies Breakfast', 'Men\u2019s Braai',
+      'Community Clean-Up', 'Gospel Evening', 'Harvest Day', "Children\u2019s Party",
+      'Marriage Seminar', 'District Meeting',
+    ]
+    const PLACES = [
+      'Church hall, 12 Mofolo Road', 'Community Centre, Morningside', null,
+      'The big green tent behind the hall', 'School hall, Orlando East',
+    ]
+    const COSTS = [50, 120, 150, 200, 350]
+    const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`)
+    const dayOn = (offset) => new Date(today.getTime() + offset * 86_400_000).toISOString().slice(0, 10)
+
+    const planned = []
+    for (let i = 0; i < NAMES.length; i++) {
+      const requires_payment = i % 4 !== 0
+      const function_date = dayOn(Math.round(-45 + (i * 135) / (NAMES.length - 1)))
+      const row = await planner.create({
+        community_id: id,
+        name: NAMES[i],
+        function_date,
+        location: PLACES[i % PLACES.length],
+        requires_payment,
+        amount: requires_payment ? COSTS[i % COSTS.length] : null,
+        created_by: ROSTER[i % ROSTER.length].email,
+      })
+      planned.push({ ...row, requires_payment, function_date })
+    }
+    console.log(`functions: ${planned.length} planned, from ${planned[0].function_date} to ${planned.at(-1).function_date}`)
+
+    const answers = []
+    const money = []
+    for (const [k, f] of planned.entries()) {
+      for (const [j, person] of ROSTER.entries()) {
+        // One in eight never answered, so the register has a blank to show for it.
+        if (roll(k + 3, j + 1, 29) < 0.125) continue
+        const comingNow = roll(k + 3, j + 1, 31) > 0.3
+        answers.push({ function_id: f.id, user_email: person.email, attending: comingNow })
+        if (!f.requires_payment || !comingNow) continue
+        const about = roll(k + 3, j + 1, 37)
+        if (about < 0.18) continue
+        if (about < 0.66) {
+          // A receipt: a file of its own, and about half of them signed off by a leader.
+          const submitted = new Date(
+            Math.min(new Date(`${f.function_date}T00:00:00Z`).getTime() - (6 + about * 60) * 3_600_000, Date.now() - 3_600_000),
+          ).toISOString()
+          const signed = roll(k + 3, j + 1, 41) < 0.5
+          money.push({
+            function_id: f.id,
+            user_email: person.email,
+            paid: true,
+            expected_pay_date: null,
+            proof_path: await freshFile(person.email, 'pdf'),
+            proof_submitted_at: submitted,
+            confirmed_by: signed ? leaders[(k + j) % leaders.length] : null,
+            confirmed_at: signed ? new Date(new Date(submitted).getTime() + 8 * 3_600_000).toISOString() : null,
+          })
+        } else {
+          money.push({
+            function_id: f.id,
+            user_email: person.email,
+            paid: false,
+            expected_pay_date: dayOn(Math.round(-45 + (k * 135) / (planned.length - 1)) + Math.round(roll(k + 3, j + 1, 43) * 8) - 3),
+            proof_path: null,
+            proof_submitted_at: null,
+            confirmed_by: null,
+            confirmed_at: null,
+          })
+        }
+      }
+    }
+    const { error: answerError } = await db.from('function_attending').insert(answers)
+    if (answerError) throw new Error(`function_attending: ${answerError.message}`)
+    const { error: moneyError } = await db.from('function_paid').insert(money)
+    if (moneyError) throw new Error(`function_paid: ${moneyError.message}`)
+    console.log(
+      `function_attending: ${answers.length} answers, function_paid: ${money.length} rows ` +
+        `(${money.filter((one) => one.paid).length} receipts, ${money.filter((one) => !one.paid).length} promises)`,
+    )
+
+    // --- 7. servings and the prayer list, both written the way the screens read them.
+    const SERVED = ['Ushering', 'Praise and worship', 'Sound system', 'Fellowship table', 'Children\u2019s ministry', 'Parking', 'Prayer chain']
+    const servingRows = ROSTER.map((one, i) => ({
+      email: one.email,
+      name: nameOf[one.email]?.name || null,
+      surname: nameOf[one.email]?.surname || null,
+      role: one.role === 'member' ? SERVED[i % SERVED.length] : one.role,
+      community_id: id,
+    }))
+    const { error: servingError } = await db.from('servings').insert(servingRows)
+    if (servingError) throw new Error(`servings: ${servingError.message}`)
+
+    const PRAYERS = [
+      ['grace.ndlovu@example.com', -1, 'Please pray with me about my mother, she is in hospital in Bloemfontein.'],
+      [ADMIN, -1, 'Thanksgiving for the hall roof — the money came in a week we had none.'],
+      ['thoko.mahlangu@example.com', -3, 'For the young people who have stopped coming to prayer meeting.'],
+      ['joshua.dlamini@example.com', -3, 'I am looking for work again. Pray that the one interview becomes something.'],
+      ['annah.mokona@example.com', -8, 'For my brother in Gqeberha, he is going through a hard marriage.'],
+      ['zanele.kunene@example.com', -8, 'For the clean-up day on Saturday, that the weather holds.'],
+      ['kelvin.osei@example.com', -11, 'For wisdom about the truck, I might have to sell it.'],
+    ]
+    const { error: prayerError } = await db
+      .from('prayer_topics')
+      .insert(PRAYERS.map(([email, back, topic]) => ({
+        community_id: id,
+        user_email: email,
+        date: dayOn(back),
+        topic,
+      })))
+    if (prayerError) throw new Error(`prayer_topics: ${prayerError.message}`)
+    console.log(`servings: ${servingRows.length} roles, prayer_topics: ${PRAYERS.length} requests`)
+
+    // --- 8. testimony: four shared in words and stored encrypted by the app's own write, plus one
+    //         picture and one document, whose bodies are files in the bucket.
+    const { TestimoniesFetch } = await import('./src/page_functions/testimonies.js')
+    const { encryptText } = await import('./src/page_functions/crypto.js')
+    const testimonies = new TestimoniesFetch(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+    const SHARED = [
+      { email: ADMIN, date: '2026-11-22', words: 'The hall is paid off. Eleven years of Sundays and it is ours.', allow_all: true },
+      { email: 'grace.ndlovu@example.com', date: '2026-11-22', words: 'Mama came out of hospital on Friday. Thank you to everyone who prayed.', allow_all: true },
+      { email: 'kelvin.osei@example.com', date: '2026-11-18', words: 'I kept this one to myself for a year. Telling you is the hardest part.', allow_all: false, authorise: leaders },
+      { email: 'mmapula.sekhuhu@example.com', date: '2026-11-08', words: 'My matric result came through. I am the first in my family.', allow_all: true },
+    ]
+    for (const one of SHARED) {
+      try {
+        await testimonies.addTestimony({
+          community_id: id, date: one.date, email: one.email, body: one.words,
+          type: 'text', allow_all: one.allow_all, authorise: one.authorise || [],
+        })
+      } catch (e) {
+        if (!/foreign key|row-level security|permission/.test(e.message)) throw e
+        const { error } = await db.from('testimony').insert({
+          community_id: id,
+          user_email: await encryptText(one.email),
+          date: one.date,
+          body: await encryptText(one.words),
+          type: 'text',
+          allow_all: one.allow_all,
+          authorise: one.authorise || [],
+        })
+        if (error) throw new Error(`testimony fallback: ${error.message}`)
+      }
+    }
+    for (const [email, kind, day] of [
+      ['joshua.dlamini@example.com', 'image', '2026-11-22'],
+      [ADMIN, 'pdf', '2026-11-18'],
+    ]) {
+      const { error } = await db.from('testimony').insert({
+        community_id: id,
+        user_email: await encryptText(email),
+        date: day,
+        body: await freshFile(email, kind),
+        type: kind,
+        allow_all: true,
+        authorise: [],
+      })
+      if (error) throw new Error(`testimony ${kind}: ${error.message}`)
+    }
+    console.log(`testimony: ${SHARED.length} encrypted words, 1 picture and 1 document in the bucket`)
+
+    // --- 9. The extra tables: people who never open the app, and everything recorded about them.
+    const EXTRA = [
+      { name: 'Nomsa', surname: 'Dube', by: leaders[0] },
+      { name: 'Felix', surname: 'Mokhtari', by: leaders[0] },
+      { name: 'Anele', surname: 'Sithole', by: leaders[1] },
+      { name: 'Zodwa', surname: 'Mkhize', by: leaders[1] },
+    ]
+    const { data: extraPeople, error: extraError } = await db
+      .from('extra_members')
+      .insert(EXTRA.map((one) => ({ community_id: id, name: one.name, surname: one.surname, created_by: one.by })))
+      .select('member_id, name, surname, created_by')
+    if (extraError) throw new Error(`extra_members: ${extraError.message}`)
+
+    const GATHERINGS = ['Sunday Service', 'Prayer Meeting', 'Bible Study', 'Youth Fellowship']
+    const REASONS = ['Work', 'Transport', 'Sick', 'Family', 'Other']
+    const extraEvents = []
+    for (const [k, member] of extraPeople.entries()) {
+      for (let at = 0; at < 2 + (k % 2); at++) {
+        const came = roll(k + 7, at + 2, 61)
+        extraEvents.push({
+          community_id: id,
+          member_id: member.member_id,
+          event_name: GATHERINGS[(k + at) % GATHERINGS.length],
+          event_date: dayOn(-7 * (at + 1)),
+          attend: came < 0.45 ? true : came < 0.8 ? false : null,
+          reason: came >= 0.45 && came < 0.8 ? REASONS[(k + at) % REASONS.length] : null,
+          recorded_by: member.created_by,
+        })
+      }
+    }
+    const { error: extraEventError } = await db.from('extra_event').insert(extraEvents)
+    if (extraEventError) throw new Error(`extra_event: ${extraEventError.message}`)
+
+    const { error: extraServingError } = await db
+      .from('extra_servings')
+      .insert(extraPeople.map((member, i) => ({ member_id: member.member_id, community_id: id, role: SERVED[i % SERVED.length] })))
+    if (extraServingError) throw new Error(`extra_servings: ${extraServingError.message}`)
+
+    const EXTRA_WORDS = [
+      { at: 0, words: 'Nomsa says thank you for the food parcel. She has not been well since August.', type: 'text' },
+      { at: 1, words: 'Felix asked the church to pray for his interview next Wednesday.', type: 'text' },
+    ]
+    for (const one of EXTRA_WORDS) {
+      const member = extraPeople[one.at]
+      const { error } = await db.from('extra_testimony').insert({
+        community_id: id,
+        member_id: member.member_id,
+        date: dayOn(-3 - one.at),
+        body: await encryptText(one.words),
+        type: one.type,
+        allow_all: true,
+        authorise: [],
+        recorded_by: member.created_by,
+      })
+      if (error) throw new Error(`extra_testimony: ${error.message}`)
+    }
+    const pictured = extraPeople[2]
+    const { error: picturedError } = await db.from('extra_testimony').insert({
+      community_id: id,
+      member_id: pictured.member_id,
+      date: dayOn(-10),
+      body: await freshFile(pictured.created_by, 'image'),
+      type: 'image',
+      allow_all: false,
+      authorise: leaders,
+      recorded_by: pictured.created_by,
+    })
+    if (picturedError) throw new Error(`extra_testimony image: ${picturedError.message}`)
+
+    /*
+      The two tables under the functions, for people with no account. Half of them came, and every
+      priced gathering they came to carries either a receipt of their own or a promised date — the
+      same shape the real tables hold, so the extra register shows both kinds side by side.
+    */
+    const extraAnswers = []
+    const extraMoney = []
+    for (const [k, f] of planned.slice(0, 6).entries()) {
+      for (const [j, member] of extraPeople.entries()) {
+        const choice = roll(k + 9, j + 3, 47)
+        if (choice < 0.25) continue
+        extraAnswers.push({ function_id: f.id, member_id: member.member_id, attending: choice >= 0.45 })
+        if (!f.requires_payment || choice < 0.45) continue
+        if (choice < 0.75) {
+          extraMoney.push({
+            function_id: f.id,
+            member_id: member.member_id,
+            paid: true,
+            expected_pay_date: null,
+            proof_path: await freshFile(member.created_by, 'pdf'),
+            proof_submitted_at: new Date(Date.now() - (k + 1) * 86_400_000 * 3).toISOString(),
+            confirmed_by: j % 2 ? leaders[0] : null,
+            confirmed_at: j % 2 ? new Date(Date.now() - (k + 1) * 86_400_000 * 2).toISOString() : null,
+          })
+        } else {
+          extraMoney.push({
+            function_id: f.id,
+            member_id: member.member_id,
+            paid: false,
+            expected_pay_date: f.function_date,
+            proof_path: null,
+            proof_submitted_at: null,
+            confirmed_by: null,
+            confirmed_at: null,
+          })
+        }
+      }
+    }
+    const { error: extraAnswerError } = await db.from('extra_function_attending').insert(extraAnswers)
+    if (extraAnswerError) throw new Error(`extra_function_attending: ${extraAnswerError.message}`)
+    const { error: extraMoneyError } = await db.from('extra_function_paid').insert(extraMoney)
+    if (extraMoneyError) throw new Error(`extra_function_paid: ${extraMoneyError.message}`)
+    console.log(
+      `extra_members: ${extraPeople.length}, extra_event: ${extraEvents.length}, extra_servings: ${extraPeople.length}, ` +
+        `extra_testimony: 3, extra_function_attending: ${extraAnswers.length}, extra_function_paid: ${extraMoney.length}`,
+    )
+
+    // --- 10. Read it all back the way a screen would: nothing in this community may reach a table
+    //         that does not carry its id, and every table the purge is meant to clear must have
+    //         something in it before the button is pressed.
+    const counts = {}
+    for (const table of [
+      'community_members', 'functions', 'session', 'event', 'servings', 'testimony',
+      'prayer_topics', 'extra_members', 'extra_event', 'extra_servings', 'extra_testimony',
+    ]) {
+      const { count, error } = await db
+        .from(table)
+        .select('*', { count: 'exact', head: true })
+        .eq('community_id', id)
+      if (error) throw new Error(`${table} count: ${error.message}`)
+      counts[table] = count || 0
+    }
+    const functionIds = planned.map((one) => one.id)
+    for (const [table, column] of [
+      ['function_attending', 'user_email'],
+      ['function_paid', 'user_email'],
+      ['extra_function_attending', 'member_id'],
+      ['extra_function_paid', 'member_id'],
+    ]) {
+      const { count, error } = await db
+        .from(table)
+        .select(column, { count: 'exact', head: true })
+        .in('function_id', functionIds)
+      if (error) throw new Error(`${table} count: ${error.message}`)
+      counts[table] = count || 0
+    }
+    const empty = Object.entries(counts).filter(([, at]) => !at).map(([table]) => table)
+    console.log('\n=== rows standing under ' + id + ' ===')
+    console.log(Object.entries(counts).map(([table, at]) => `${table}: ${at}`).join('  |  '))
+    console.log(`files in the bucket: ${uploaded.length}${uploaded.length ? `, under ${PREFIX}/` : ''}`)
+
+    expect(empty).toEqual([])
+    // Every file this pass wrote is reachable, or the receipt column would be showing a dead link.
+    if (uploaded.length) {
+      const first = await fetch(db.storage.from(BUCKET).getPublicUrl(uploaded[0]).data.publicUrl)
+      expect(first.ok).toBe(true)
+    }
+    // And the community carries the address the delete button is going to ask for.
+    const { data: ownerRow } = await db.from('community').select('name, join_id, created_by').eq('community_id', id).single()
+    expect(ownerRow.created_by).toBe(ADMIN)
+    expect(ownerRow.join_id).toBe('STONE4')
+  }, 300_000)
 })

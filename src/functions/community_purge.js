@@ -35,6 +35,7 @@ const TABLES = [
   { table: 'event', under: 'community' },
   { table: 'session', under: 'community' },
   { table: 'servings', under: 'community' },
+  { table: 'prayer_topics', under: 'community' },
   { table: 'testimony', under: 'community' },
 ]
 

@@ -29,6 +29,7 @@ const WHAT_GOES = [
   "Functions and the attendance, payments and receipts recorded under them",
   "Gatherings, check-in sessions and their attendance",
   "Servings, testimonies and the files attached to either",
+  "Prayer topics and the address that asked for each one",
   "Extra members and everything noted about them",
 ];
 

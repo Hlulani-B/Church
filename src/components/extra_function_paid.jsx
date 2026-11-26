@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import extra from "../page_functions/extra.js";
 import PeoplePicker, { mapExtraMembers } from "./people_picker.jsx";
 import ProofViewer from "./proof_viewer.jsx";
+import Pager, { usePager, PER_PAGE } from "./pager.jsx";
 
 /*
   Money for one planned function from an extra member, kept in `extra_function_paid`, shown beside
@@ -59,6 +60,8 @@ export default function ExtraFunctionPaid({ communityId, functionId, email }) {
 
   const people = members.community_id === communityId ? mapExtraMembers(members.list) : [];
   const list = rows.function_id === String(functionId) ? rows.list : [];
+  // A chunk of the payment rows, every one of them still counted by the badge above.
+  const shown = usePager(list, PER_PAGE, `${communityId}|${functionId}`);
 
   const load = useCallback(() => {
     if (!communityId || !functionId) return;
@@ -172,7 +175,7 @@ export default function ExtraFunctionPaid({ communityId, functionId, email }) {
       </form>
 
       {list.length ? (
-        <div className="tablewrap">
+        <div className="tablewrap" id={shown.anchorId}>
           <table>
             <thead>
               <tr>
@@ -185,7 +188,7 @@ export default function ExtraFunctionPaid({ communityId, functionId, email }) {
               </tr>
             </thead>
             <tbody>
-              {list.map((one) => {
+              {shown.chunk.map((one) => {
                 const named = `${one.extra_members?.name ?? ""} ${one.extra_members?.surname ?? ""}`.trim();
                 const conf = `${one.confirmed?.name ?? ""} ${one.confirmed?.surname ?? ""}`.trim();
                 return (
@@ -216,6 +219,7 @@ export default function ExtraFunctionPaid({ communityId, functionId, email }) {
       ) : (
         <p className="tally">No payment is recorded for an extra member under this function yet.</p>
       )}
+      <Pager state={shown} noun={shown.total === 1 ? "payment" : "payments"} />
     </section>
   );
 }

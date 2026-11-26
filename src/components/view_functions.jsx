@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ChurchFunctionsFetch } from "../page_functions/church_functions.js";
 import LoadingBoxes from "./loading_boxes.jsx";
+import Pager, { usePager, PER_PAGE } from "./pager.jsx";
 
 const functions = new ChurchFunctionsFetch();
 
@@ -133,6 +134,9 @@ export default function ViewFunctions({ community_id, reload, onOpen }) {
 
   const listed = rows || [];
   const paid = listed.filter((one) => one.requires_payment).length;
+  // A community's plans only pile up: twenty-five of them on the screen, the whole register still
+  // counted by the line beneath, so the functions page does not end in a scroll of old days.
+  const planned = usePager(listed, PER_PAGE, community_id);
 
   return (
     <section className="vf">
@@ -145,7 +149,7 @@ export default function ViewFunctions({ community_id, reload, onOpen }) {
       {error && <div className="note">{error}</div>}
 
       {listed.length ? (
-        <div className="tablewrap">
+        <div className="tablewrap" id={planned.anchorId}>
           <table>
             <thead>
               <tr>
@@ -160,7 +164,7 @@ export default function ViewFunctions({ community_id, reload, onOpen }) {
               </tr>
             </thead>
             <tbody>
-              {listed.map((one) => (
+              {planned.chunk.map((one) => (
                 <tr key={one.id}>
                   <td data-label="Function">{one.name}</td>
                   <td data-label="Date">{pretty(one.function_date)}</td>
@@ -195,6 +199,7 @@ export default function ViewFunctions({ community_id, reload, onOpen }) {
           <p className="sub">Nothing has been planned for this community yet.</p>
         ))
       )}
+      <Pager state={planned} noun={planned.total === 1 ? "function" : "functions"} />
 
       <p className="hint">
         {listed.length

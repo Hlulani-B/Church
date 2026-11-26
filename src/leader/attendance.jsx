@@ -4,7 +4,9 @@ import { Auth } from "../functions/auth.js";
 import { AttendanceFetch, REASONS } from "../page_functions/attendance.js";
 import { UserFetch } from "../page_functions/user.js";
 import AbsenceFor, { displayName } from "../components/absence_for.jsx";
+import ExtraEvent from "../components/extra_event.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
+import Pager, { usePager, PER_PAGE } from "../components/pager.jsx";
 import LeaderMenu from "./menu.jsx";
 import BackToCommunities from "../components/back.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
@@ -172,6 +174,16 @@ export default function LeaderAttendance() {
 
   // The apologies already on file for whichever gathering is on screen.
   const notices = gathering ? gathering.rows.filter((one) => one.attend === false).length : 0;
+
+  /*
+    Both lists on this page are cut into chunks. The gatherings grow one every Sunday and never
+    come back, and the register of a single gathering is as long as the fellowship — read whole, the
+    second of them pushed the reason column, the way back and the extra register off the screen
+    entirely. Neither count changes what is read: the whole list is still fetched and still counted,
+    and only the printing stops at twenty-five.
+  */
+  const services = usePager(list?.services ?? [], PER_PAGE, communityId);
+  const attendees = usePager(gathering?.rows ?? [], PER_PAGE, `${chosen?.event_date}|${chosen?.event_name}`);
 
   /*
     What the For-who box offers: the caller's own details at the very top — the row this page
@@ -389,7 +401,7 @@ export default function LeaderAttendance() {
 
         {list && !chosen && !error && (
           <>
-            <p className="tally">
+            <p className="tally" id={services.anchorId}>
               {list.services.length
                 ? `Open a gathering to see who was recorded at it.${
                     list.sampled
@@ -411,7 +423,7 @@ export default function LeaderAttendance() {
                   </tr>
                 </thead>
                 <tbody>
-                  {list.services.map((one) => (
+                  {services.chunk.map((one) => (
                     <tr key={`${one.event_date}|${one.event_name}`}>
                       <td>{pretty(one.event_date)}</td>
                       <td className="who">{one.event_name}</td>
@@ -437,6 +449,7 @@ export default function LeaderAttendance() {
                 </tbody>
               </table>
             ) : null}
+            <Pager state={services} noun={services.total === 1 ? "gathering" : "gatherings"} />
           </>
         )}
 
@@ -444,7 +457,7 @@ export default function LeaderAttendance() {
 
         {chosen && gathering && !error && (
           <>
-            <p className="tally">
+            <p className="tally" id={attendees.anchorId}>
               {gathering.upcoming
                 ? `${gathering.event_name} on ${pretty(gathering.event_date)} — that day has not come, so nobody is counted present at it. ${notices} ${notices === 1 ? "notice has" : "notices have"} been sent ahead of it.`
                 : `${gathering.event_name} on ${pretty(gathering.event_date)} — ${gathering.present} of ${gathering.total} recorded as present.`}
@@ -458,7 +471,7 @@ export default function LeaderAttendance() {
                 </tr>
               </thead>
               <tbody>
-                {gathering.rows.map((one) => (
+                {attendees.chunk.map((one) => (
                   <tr key={one.event_id}>
                     <td className="who">
                       {`${one.name} ${one.surname}`.trim() || "Someone who has left"}
@@ -469,11 +482,16 @@ export default function LeaderAttendance() {
                 ))}
               </tbody>
             </table>
+            <Pager state={attendees} noun={attendees.total === 1 ? "person" : "people"} />
             <button className="back" type="button" onClick={() => setPicked(null)}>
               All gatherings
             </button>
           </>
         )}
+
+        {/* Attendance for the members who never joined the app: their own register, kept here on
+            the attendance page beside the gatherings it mirrors, not out on the dashboard. */}
+        {communityId && <ExtraEvent communityId={communityId} email={email} />}
 
         {!chosen && list && list.services.length ? (
           <button className="back" type="button" onClick={() => open("/leader-dashboard")}>

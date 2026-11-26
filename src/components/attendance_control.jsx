@@ -3,6 +3,7 @@ import { SessionFetch } from "../page_functions/session.js";
 import { clock } from "../page_functions/place.js";
 import QrCard from "./qr_code.jsx";
 import { pushToast } from "./toast.jsx";
+import Pager, { usePager } from "./pager.jsx";
 
 const sessions = new SessionFetch();
 
@@ -252,9 +253,6 @@ export default function AttendanceControl({ community_id, admin = false }) {
     setRows(Array.isArray(next) ? next : []);
   }
 
-  // Nothing is open, scheduled or recently cancelled: there is nothing for this box to say.
-  if (!rows.length) return null;
-
   // The one the caller opened, and whatever else is live, float to the top of the list.
   const ordered = [...rows].sort((a, b) => {
     const aMine = a.mine ? 0 : 1;
@@ -263,10 +261,19 @@ export default function AttendanceControl({ community_id, admin = false }) {
     return new Date(b.started_at) - new Date(a.started_at);
   });
 
+  // A card is a screenful on its own, so ten of them is where the list stops and the count line
+  // takes over. The hook sits above the empty check: a hook cannot be asked to keep out of a
+  // render that decided to leave early. These cards carry no anchor, so the screen stays where the
+  // reader left it — the box is a stack of cards at the top of a dashboard, not a long register.
+  const live = usePager(ordered, 10, community_id);
+
+  // Nothing is open, scheduled or recently cancelled: there is nothing for this box to say.
+  if (!rows.length) return null;
+
   return (
     <section className="ac">
       <style>{css}</style>
-      {ordered.map((one) => (
+      {live.chunk.map((one) => (
         <ManageCard
           key={one.session_id}
           one={one}
@@ -276,6 +283,7 @@ export default function AttendanceControl({ community_id, admin = false }) {
           onCancelled={(session_id) => setRows((before) => before.filter((row) => row.session_id !== session_id))}
         />
       ))}
+      <Pager state={live} noun={live.total === 1 ? "session" : "sessions"} />
     </section>
   );
 }

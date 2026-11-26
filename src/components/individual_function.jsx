@@ -6,6 +6,7 @@ import ProofViewer from "./proof_viewer.jsx";
 import ExtraFunctionAttending from "./extra_function_attending.jsx";
 import ExtraFunctionPaid from "./extra_function_paid.jsx";
 import LoadingBoxes from "./loading_boxes.jsx";
+import Pager, { usePager, PER_PAGE } from "./pager.jsx";
 import { named, pretty } from "./view_functions.jsx";
 
 const functions = new ChurchFunctionsFetch();
@@ -249,6 +250,14 @@ export default function IndividualFunction({ community_id, function_id, onBack, 
   const unexpected = answers.filter((person) => person.paid || person.expected_pay_date);
 
   /*
+    The register under a section is cut into chunks. A function that a whole fellowship has answered
+    used to run thirty rows down before the extra members below it, the payment proof column long
+    since out of sight; twenty-five of them are listed, and the line beneath says how many the
+    section holds altogether.
+  */
+  const register = usePager(members, PER_PAGE, `${function_id}|${tab}`);
+
+  /*
     Where one person stands, read off the same folded rows the sections use. An address on the roster
     that is not among them has said nothing about this function — which is what `answers` says, not
     something the page fills in.
@@ -372,7 +381,7 @@ export default function IndividualFunction({ community_id, function_id, onBack, 
       </div>
 
       {members.length ? (
-        <div className="tablewrap">
+        <div className="tablewrap" id={register.anchorId}>
           <table>
             <thead>
               <tr>
@@ -382,7 +391,7 @@ export default function IndividualFunction({ community_id, function_id, onBack, 
               </tr>
             </thead>
             <tbody>
-              {members.map((person) => (
+              {register.chunk.map((person) => (
                 <tr key={person.email}>
                   {shown.columns.map((column) => (
                     <td key={column.head} data-label={column.head}>
@@ -399,6 +408,7 @@ export default function IndividualFunction({ community_id, function_id, onBack, 
           Nobody in <em>{shown.label}</em> yet.
         </p>
       )}
+      <Pager state={register} noun={register.total === 1 ? "person" : "people"} />
 
       {!paidFunction && unexpected.length > 0 && (
         <p className="aside">

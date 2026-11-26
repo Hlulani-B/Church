@@ -8,9 +8,8 @@ import AttendanceControl from "../components/attendance_control.jsx";
 import SessionLive from "../components/session_live.jsx";
 import AvailableFunctions from "../components/available_functions.jsx";
 import ExtraMembers from "../components/extra_members.jsx";
-import ExtraEvent from "../components/extra_event.jsx";
-import ExtraServings from "../components/extra_servings.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
+import Pager, { usePager, PER_PAGE } from "../components/pager.jsx";
 import { adminState, rememberAdmin } from "./state.js";
 import servings from "../page_functions/servings.js";
 
@@ -210,6 +209,14 @@ export default function AdminDashboard() {
         ),
       )
     : rows;
+  /*
+    The roster is a chunk at a time. A fellowship that has grown past a screenful used to bury
+    everything else on this page — the join code, the extra members, the way out — under a column of
+    names, and finding the twenty-eighth person meant scrolling rather than searching. Twenty-five
+    are shown, the line under the table says which twenty-five of how many, and the search still
+    counts every match whether or not it is on the screen.
+  */
+  const people = usePager(listed, PER_PAGE, `${communityId}|${find}`);
 
   // the three numbers shown above the table
   const adminCount = rows.filter((one) => one.role === "admin").length;
@@ -565,7 +572,7 @@ export default function AdminDashboard() {
                 </div>
               ) : null}
               {listed.length ? (
-                <div className="tablewrap">
+                <div className="tablewrap" id={people.anchorId}>
                   <table>
                     <thead>
                       <tr>
@@ -576,7 +583,7 @@ export default function AdminDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {listed.map((one) => (
+                      {people.chunk.map((one) => (
                         <tr key={one.email}>
                           <td className="name">
                             <div className="who">
@@ -645,6 +652,7 @@ export default function AdminDashboard() {
               ) : (
                 !error && <LoadingBoxes count={5} words="Reading the people in this community…" />
               )}
+              {listed.length ? <Pager state={people} noun={rows.length === 1 ? "person" : "people"} /> : null}
             </section>
 
             <section className="side">
@@ -670,9 +678,10 @@ export default function AdminDashboard() {
             </section>
           </div>
 
+          {/* Only the roster of the people who never joined lives here, beside the real members it
+              mirrors. Their attendance is kept on the attendance page and their servings on the
+              servings page, each where the matching feature already lives. */}
           <ExtraMembers communityId={communityId} email={email} />
-          <ExtraEvent communityId={communityId} email={email} />
-          <ExtraServings communityId={communityId} />
           </>
         )}
       </main>

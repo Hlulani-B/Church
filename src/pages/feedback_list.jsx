@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import Menu from "../components/menu.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
+import Pager, { usePager } from "../components/pager.jsx";
 import { FeedbackFetch } from "../page_functions/feedback.js";
 
 const feedback = new FeedbackFetch();
@@ -12,10 +13,10 @@ const feedback = new FeedbackFetch();
   role either. Any signed-in person can see what everybody else has already raised — the
   feedback is about Kopano itself, and the people who use it are the ones it is for.
 
-  Rows come back newest first with no paging: this is a list somebody scrolls once a week
-  to see whether the same complaint keeps showing up, not a report. If the pile ever
-  outgrows a screen, sorting and filtering become real work; until then, an empty state
-  and a plain list carry the whole job.
+  Rows come back newest first and are shown ten at a time, because a note is a card rather than a
+  line and forty of them is a screen and a half of scrolling for one. The summary above still counts
+  the whole pile and an export still writes it: only the printing is cut, and the line under the
+  cards says which ten of how many are on the screen.
 */
 const css = `
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;1,500&display=swap");
@@ -122,6 +123,9 @@ export default function FeedbackList() {
   const avg = rows.length ? (rows.reduce((sum, one) => sum + Number(one.stars || 0), 0) / rows.length) : 0;
   const yeses = rows.filter((one) => one.solves_problem).length;
 
+  // Ten notes a screen: this list is read for what it says, not for how long it is.
+  const notes = usePager(rows, 10);
+
   return (
     <div className="fx">
       <style>{css}</style>
@@ -168,7 +172,7 @@ export default function FeedbackList() {
         )}
 
         {state === "ready" && rows.length > 0 && (
-          <div className="summary">
+          <div className="summary" id={notes.anchorId}>
             <div><span className="k">{rows.length}</span><span className="l">Total notes</span></div>
             <div><span className="k">{avg.toFixed(1)}★</span><span className="l">Average</span></div>
             <div>
@@ -184,7 +188,7 @@ export default function FeedbackList() {
           </div>
         )}
 
-        {state === "ready" && rows.map((one) => (
+        {state === "ready" && notes.chunk.map((one) => (
           <article key={one.id} className="row">
             <p className="head">
               <Starline n={one.stars} />
@@ -198,6 +202,7 @@ export default function FeedbackList() {
             {one.most_challenging && <p className="ans"><span className="lb">Most challenging</span>{one.most_challenging}</p>}
           </article>
         ))}
+        <Pager state={notes} noun={rows.length === 1 ? "note" : "notes"} />
       </main>
     </div>
   );

@@ -5,6 +5,7 @@ import { ChurchFunctionsFetch } from "../page_functions/church_functions.js";
 import { pretty } from "../components/view_functions.jsx";
 import Menu from "../components/menu.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
+import Pager, { usePager, PER_PAGE } from "../components/pager.jsx";
 import BackToCommunities, { BackToDashboard } from "../components/back.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
@@ -171,6 +172,10 @@ export default function AvailableFunctionsPage() {
     navigate("/rsvp", { state: { ...admin, function_id: one.id, role: route?.role } });
   }
 
+  // A fellowship that plans a function a week has forty of them still to come before long, and the
+  // RSVP worth answering is buried under all of them. Twenty-five a chunk, soonest first.
+  const planned = usePager(listed, PER_PAGE, communityId);
+
   if (!signedIn) {
     return (
       <div className="au loading">
@@ -225,7 +230,7 @@ export default function AvailableFunctionsPage() {
             {error && <div className="note bad">{error}</div>}
 
             {listed.length ? (
-              <div className="tablewrap">
+              <div className="tablewrap" id={planned.anchorId}>
                 <table>
                   <thead>
                     <tr>
@@ -237,7 +242,7 @@ export default function AvailableFunctionsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {listed.map((one) => (
+                    {planned.chunk.map((one) => (
                       <tr key={one.id}>
                         <td className="name" data-label="Function">
                           <button type="button" onClick={() => openRsvp(one)}>
@@ -267,6 +272,7 @@ export default function AvailableFunctionsPage() {
                 </p>
               ))
             )}
+            <Pager state={planned} noun={planned.total === 1 ? "function" : "functions"} />
 
             <p className="hint">
               {listed.length

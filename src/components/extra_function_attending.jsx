@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import extra from "../page_functions/extra.js";
 import PeoplePicker, { mapExtraMembers } from "./people_picker.jsx";
+import Pager, { usePager, PER_PAGE } from "./pager.jsx";
 
 /*
   An extra member's answer to one planned function, kept in `extra_function_attending`. It opens at
@@ -44,6 +45,8 @@ export default function ExtraFunctionAttending({ communityId, functionId }) {
 
   const people = members.community_id === communityId ? mapExtraMembers(members.list) : [];
   const list = rows.function_id === String(functionId) ? rows.list : [];
+  // A chunk of the answers, the whole set still counted by the badge above.
+  const shown = usePager(list, PER_PAGE, `${communityId}|${functionId}`);
 
   const load = useCallback(() => {
     if (!communityId || !functionId) return;
@@ -121,7 +124,7 @@ export default function ExtraFunctionAttending({ communityId, functionId }) {
       {error && <p className="fail">{error}</p>}
 
       {list.length ? (
-        <div className="tablewrap">
+        <div className="tablewrap" id={shown.anchorId}>
           <table>
             <thead>
               <tr>
@@ -131,7 +134,7 @@ export default function ExtraFunctionAttending({ communityId, functionId }) {
               </tr>
             </thead>
             <tbody>
-              {list.map((one) => {
+              {shown.chunk.map((one) => {
                 const named = `${one.extra_members?.name ?? ""} ${one.extra_members?.surname ?? ""}`.trim();
                 return (
                   <tr key={one.member_id}>
@@ -152,6 +155,7 @@ export default function ExtraFunctionAttending({ communityId, functionId }) {
       ) : (
         <p className="tally">No extra member has an answer for this function yet.</p>
       )}
+      <Pager state={shown} noun={shown.total === 1 ? "answer" : "answers"} />
     </section>
   );
 }

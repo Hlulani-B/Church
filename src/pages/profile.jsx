@@ -5,6 +5,7 @@ import { UserFetch } from "../page_functions/user.js";
 import { CommunityFetch } from "../page_functions/community.js";
 import Menu from "../components/menu.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
+import Pager, { usePager, PER_PAGE } from "../components/pager.jsx";
 import BackToCommunities from "../components/back.jsx";
 
 const accounts = new Auth();
@@ -158,6 +159,9 @@ export default function ProfilePage() {
     });
   }
 
+  // The communities this address belongs to, a chunk of them at a time like every other list.
+  const joined = usePager(communities ?? [], PER_PAGE);
+
   if (!signedIn) {
     return (
       <div className="au">
@@ -274,8 +278,8 @@ export default function ProfilePage() {
           </div>
         )}
         {communitiesLoaded && Array.isArray(communities) && communities.length > 0 && (
-          <div className="communities">
-            {communities.map((one) => (
+          <div className="communities" id={joined.anchorId}>
+            {joined.chunk.map((one) => (
               <button
                 key={one.community_id}
                 type="button"
@@ -288,6 +292,7 @@ export default function ProfilePage() {
             ))}
           </div>
         )}
+        <Pager state={joined} noun={joined.total === 1 ? "community" : "communities"} />
 
         <h2 className="serif">Anything to say about the app?</h2>
         <p>

@@ -4,6 +4,8 @@ import { Auth } from "../functions/auth.js";
 import servings from "../page_functions/servings.js";
 import Menu from "../components/menu.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
+import Pager, { usePager, PER_PAGE } from "../components/pager.jsx";
+import ExtraServings from "../components/extra_servings.jsx";
 import BackToCommunities, { BackToDashboard } from "../components/back.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
@@ -192,6 +194,10 @@ export default function ServingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [communityId]);
 
+  // One row per serving, a chunk of them at a time: a fellowship that serves in many teams used to
+  // scroll past the whole register before it reached the extra servings kept beside it.
+  const paged = usePager(rows ?? [], PER_PAGE, communityId);
+
   async function onSaveRole(email, role) {
     setError("");
     try {
@@ -260,7 +266,7 @@ export default function ServingsPage() {
             {rows === null ? (
               <LoadingBoxes words="Reading this community's servings…" />
             ) : rows.length ? (
-              <div className="tablewrap">
+              <div className="tablewrap" id={paged.anchorId}>
                 <table>
                   <thead>
                     {/* No Address column: this list is read by whoever leads or admins the community,
@@ -273,7 +279,7 @@ export default function ServingsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((one) => (
+                    {paged.chunk.map((one) => (
                       <tr key={one.email}>
                         <td data-label="Name">
                           <div className="who">
@@ -295,6 +301,7 @@ export default function ServingsPage() {
             ) : (
                 !error && <p className="sub">Nobody is listed under servings for this community yet.</p>
             )}
+            <Pager state={paged} noun={rows?.length === 1 ? "serving" : "servings"} />
             <p className="hint">
               {canManage
                 ? "Change a serving's role here. Only admins and leaders can do this."
@@ -302,6 +309,11 @@ export default function ServingsPage() {
             </p>
           </section>
         )}
+
+        {/* The same servings, kept apart, for the people who never joined the app. It lives here on
+            the servings page beside the register it mirrors, and only for the hands that may manage
+            a serving at all — an admin or a leader. */}
+        {communityId && canManage && <ExtraServings communityId={communityId} />}
       </main>
     </div>
   );

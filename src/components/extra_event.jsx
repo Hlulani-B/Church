@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useState } from "react";
 import extra from "../page_functions/extra.js";
 import PeoplePicker, { mapExtraMembers } from "./people_picker.jsx";
+import Pager, { usePager, PER_PAGE } from "./pager.jsx";
 
 /*
   Attendance for the people who never joined, kept in `extra_event`: one gathering, one of these
-  members, and whether they came. It sits on the dashboards under the extra-members list because
-  marking an absent friend is a leader's or an admin's act, done by the same hand that added them —
-  nobody marks this from a phone, and there is no PIN or check-in behind it; the entry IS the record.
+  members, and whether they came. It sits on the attendance page, beside the gatherings it mirrors,
+  because marking an absent friend is a leader's or an admin's act, done by the same hand that reads
+  the register — nobody marks this from a phone, and there is no PIN or check-in behind it; the entry
+  IS the record.
 
   `attend` is deliberately three-way — present, absent, or not marked — because a name put down for a
   day is not a claim that they came. When the answer is "absent" a reason is offered, using exactly the
@@ -72,6 +74,9 @@ export default function ExtraEvent({ communityId, email }) {
 
   const people = members.community_id === communityId ? mapExtraMembers(members.list) : [];
   const list = rows.community_id === communityId ? rows.list : [];
+  // Every day an absent friend was marked for is a row, so this register grows without ever being
+  // cleaned; twenty-five of them are printed, and the badge above still counts the whole of it.
+  const shown = usePager(list, PER_PAGE, communityId);
 
   const load = useCallback(() => {
     if (!communityId) return;
@@ -177,7 +182,7 @@ export default function ExtraEvent({ communityId, email }) {
       </form>
 
       {list.length ? (
-        <div className="tablewrap">
+        <div className="tablewrap" id={shown.anchorId}>
           <table>
             <thead>
               <tr>
@@ -190,7 +195,7 @@ export default function ExtraEvent({ communityId, email }) {
               </tr>
             </thead>
             <tbody>
-              {list.map((one) => {
+              {shown.chunk.map((one) => {
                 const named = `${one.extra_members?.name ?? ""} ${one.extra_members?.surname ?? ""}`.trim();
                 return (
                   <tr key={one.event_id}>
@@ -211,6 +216,7 @@ export default function ExtraEvent({ communityId, email }) {
       ) : (
         <p className="tally">Nothing has been recorded for the extra members yet.</p>
       )}
+      <Pager state={shown} noun={shown.total === 1 ? "record" : "records"} />
     </section>
   );
 }

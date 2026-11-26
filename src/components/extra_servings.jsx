@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useState } from "react";
 import extra from "../page_functions/extra.js";
 import PeoplePicker, { mapExtraMembers } from "./people_picker.jsx";
+import Pager, { usePager, PER_PAGE } from "./pager.jsx";
 
 /*
   A serving — a role a person holds — kept for one of the people who never open the app, shown on the
-  dashboards beside the extra-members list.
+  servings page beside the register it mirrors.
 
   The fellowship already records what a member does against their address in the real servings table;
   this is the same idea for an extra member, whose only handle is the uuid the dashboard gave them. A
@@ -68,6 +69,9 @@ export default function ExtraServings({ communityId }) {
 
   const people = members.community_id === communityId ? mapExtraMembers(members.list) : [];
   const list = rows.community_id === communityId ? rows.list : [];
+  // A chunk of the servings on the screen; saving one still rewrites the whole list, so only the
+  // printing is cut and the badge above still counts every serving this community has.
+  const shown = usePager(list, PER_PAGE, communityId);
 
   const load = useCallback(() => {
     if (!communityId) return;
@@ -174,7 +178,7 @@ export default function ExtraServings({ communityId }) {
       </form>
 
       {list.length ? (
-        <div className="tablewrap">
+        <div className="tablewrap" id={shown.anchorId}>
           <table>
             <thead>
               <tr>
@@ -184,7 +188,7 @@ export default function ExtraServings({ communityId }) {
               </tr>
             </thead>
             <tbody>
-              {list.map((one) => (
+              {shown.chunk.map((one) => (
                 <tr key={one.id}>
                   <td>{nameOf(one) || "An extra member"}</td>
                   <td>
@@ -251,6 +255,7 @@ export default function ExtraServings({ communityId }) {
       ) : (
         <p className="tally">No serving has been recorded for an extra member yet.</p>
       )}
+      <Pager state={shown} noun={shown.total === 1 ? "serving" : "servings"} />
     </section>
   );
 }

@@ -8,6 +8,7 @@ import SessionLive from "../components/session_live.jsx";
 import AvailableFunctions from "../components/available_functions.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 import { AdminDashboardFetch } from "../page_functions/admin_dashboard.js";
+import Pager, { usePager, PER_PAGE } from "../components/pager.jsx";
 
 const accounts = new Auth();
 const attendance = new AttendanceFetch();
@@ -196,6 +197,9 @@ export default function MemberDashboard() {
 
   const admins = hosts.filter((one) => one.role === "admin");
   const leaders = hosts.filter((one) => one.role === "leader");
+  // A leadership roster is a list like any other: a chunk of it on the screen, and the line under
+  // the table saying how many there are altogether.
+  const roster = usePager(hosts, PER_PAGE, communityId);
 
   if (!signedIn) {
     return (
@@ -325,7 +329,7 @@ export default function MemberDashboard() {
               Leadership
               {hosts.length ? <span className="count">{hosts.length}</span> : null}
             </h3>
-            <div className="tablewrap">
+            <div className="tablewrap" id={roster.anchorId}>
               <table>
                 <thead>
                   <tr>
@@ -335,7 +339,7 @@ export default function MemberDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {hosts.map((one, i) => (
+                  {roster.chunk.map((one, i) => (
                     <tr key={`${one.role}-${one.name}-${one.surname}-${i}`}>
                       <td className="name">
                         <div className="who">
@@ -356,6 +360,7 @@ export default function MemberDashboard() {
                 </tbody>
               </table>
             </div>
+            <Pager state={roster} noun={hosts.length === 1 ? "leader" : "leaders"} />
           </section>
         )}
       </main>

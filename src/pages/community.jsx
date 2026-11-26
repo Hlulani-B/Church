@@ -6,6 +6,7 @@ import { UserFetch } from "../page_functions/user.js";
 import servings from "../page_functions/servings.js";
 import Menu from "../components/menu.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
+import Pager, { usePager, PER_PAGE } from "../components/pager.jsx";
 
 const accounts = new Auth();
 const users = new UserFetch();
@@ -260,6 +261,10 @@ export default function CommunityPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [popup]);
 
+  // A membership list is a list like any other: a chunk of the cards, and the line beneath saying
+  // how many fellowships this address belongs to altogether.
+  const joined = usePager(mine ?? [], PER_PAGE);
+
   if (!signedIn) {
     return (
       <div className="au loading">
@@ -319,8 +324,8 @@ export default function CommunityPage() {
         {mine === null ? (
           <LoadingBoxes kind="cards" count={3} words="Reading your communities…" />
         ) : mine.length ? (
-          <div className="cards">
-            {mine.map((one) => (
+          <div className="cards" id={joined.anchorId}>
+            {joined.chunk.map((one) => (
               <button className="card" type="button" key={one.community_id} onClick={() => openDashboard(one)}>
                 <span className="title serif">{one.name}</span>
                 <span className="cap">Open</span>
@@ -330,6 +335,7 @@ export default function CommunityPage() {
         ) : (
           <p className="sub">You are not in a community yet.</p>
         )}
+        <Pager state={joined} noun={joined.total === 1 ? "community" : "communities"} />
       </main>
 
       {popup === "create" && (

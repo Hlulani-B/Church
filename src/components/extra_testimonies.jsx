@@ -3,6 +3,7 @@ import extra from "../page_functions/extra.js";
 import { UserFetch } from "../page_functions/user.js";
 import { decryptText } from "../page_functions/crypto.js";
 import PeoplePicker, { mapUsers, mapExtraMembers } from "./people_picker.jsx";
+import Pager, { usePager } from "./pager.jsx";
 
 /*
   The testimonies kept for the people who never join the app, shown under the real testimony list on
@@ -135,6 +136,9 @@ export default function ExtraTestimonies({ communityId, email, privileged = fals
   const [editError, setEditError] = useState("");
 
   const list = rows.community_id === communityId ? rows.list : [];
+  // A testimony is a card with the whole of somebody's sharing on it, so ten of them is already a
+  // long scroll; the rest are a click away and still counted by the line underneath.
+  const shown = usePager(list, 10, communityId);
   const memberPeople = members.community_id === communityId ? mapExtraMembers(members.list) : [];
   const userPeople = users.community_id === communityId ? mapUsers(users.list) : [];
 
@@ -320,10 +324,10 @@ export default function ExtraTestimonies({ communityId, email, privileged = fals
         </>
       )}
 
-      <div style={{ marginTop: 22 }}>
+      <div style={{ marginTop: 22 }} id={shown.anchorId}>
         {error && <p className="fail">{error}</p>}
         {list.length ? (
-          list.map((one) => {
+          shown.chunk.map((one) => {
             const named = `${one.extra_members?.name ?? ""} ${one.extra_members?.surname ?? ""}`.trim();
             return (
               <article className="item" key={one.testimony_id}>
@@ -347,6 +351,7 @@ export default function ExtraTestimonies({ communityId, email, privileged = fals
         ) : (
           !error && <p className="tally">{privileged ? "Nothing has been recorded for the extra members yet." : "Nothing here has been shared with you yet."}</p>
         )}
+        <Pager state={shown} noun={shown.total === 1 ? "testimony" : "testimonies"} />
       </div>
 
       {editing && (

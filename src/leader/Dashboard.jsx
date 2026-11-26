@@ -8,9 +8,8 @@ import AttendanceControl from "../components/attendance_control.jsx";
 import SessionLive from "../components/session_live.jsx";
 import AvailableFunctions from "../components/available_functions.jsx";
 import ExtraMembers from "../components/extra_members.jsx";
-import ExtraEvent from "../components/extra_event.jsx";
-import ExtraServings from "../components/extra_servings.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
+import Pager, { usePager, PER_PAGE } from "../components/pager.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
 const accounts = new Auth();
@@ -170,6 +169,12 @@ export default function LeaderDashboard() {
         ),
       )
     : rows;
+  /*
+    The roster is a chunk at a time, so a community of two hundred names cannot push the rest of this
+    page off the screen. The search above still answers for every match it found; only the printing
+    is cut, and the line under the table says which of how many is on the screen.
+  */
+  const people = usePager(listed, PER_PAGE, `${communityId}|${find}`);
 
   // the three numbers shown above the table
   const adminCount = rows.filter((one) => one.role === "admin").length;
@@ -313,7 +318,7 @@ export default function LeaderDashboard() {
               </div>
             ) : null}
             {listed.length ? (
-              <div className="tablewrap">
+              <div className="tablewrap" id={people.anchorId}>
                 <table>
                   <thead>
                     <tr>
@@ -323,7 +328,7 @@ export default function LeaderDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {listed.map((one) => (
+                    {people.chunk.map((one) => (
                       // The address stays as the row's identity — for React, and for the
                       // read that follows when a role is chosen or somebody is taken out.
                       <tr key={one.email}>
@@ -359,6 +364,7 @@ export default function LeaderDashboard() {
             ) : (
               !error && <LoadingBoxes count={5} words="Reading the people in this community…" />
             )}
+            {listed.length ? <Pager state={people} noun={rows.length === 1 ? "person" : "people"} /> : null}
             <p className="tally">
               {rows.length
                 ? `${rows.length} ${rows.length === 1 ? "person" : "people"} in ${
@@ -368,9 +374,10 @@ export default function LeaderDashboard() {
             </p>
           </section>
 
+          {/* Only the roster of the people who never joined lives here, beside the real members it
+              mirrors. Their attendance is kept on the attendance page and their servings on the
+              servings page, each where the matching feature already lives. */}
           <ExtraMembers communityId={communityId} email={email} />
-          <ExtraEvent communityId={communityId} email={email} />
-          <ExtraServings communityId={communityId} />
           </>
         )}
       </main>

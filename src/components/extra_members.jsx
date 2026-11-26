@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import extra from "../page_functions/extra.js";
+import Pager, { usePager, PER_PAGE } from "./pager.jsx";
 
 /*
   The two things a leader or an admin does about the people who will not use the app, shown under the
@@ -56,6 +57,8 @@ export default function ExtraMembers({ communityId, email }) {
   const [removingId, setRemovingId] = useState("");
 
   const list = rows.community_id === communityId ? rows.list : [];
+  // Twenty-five of the added people on the screen; the badge above still counts every one of them.
+  const shown = usePager(list, PER_PAGE, communityId);
 
   const load = useCallback(() => {
     if (!communityId) return;
@@ -147,7 +150,7 @@ export default function ExtraMembers({ communityId, email }) {
 
       <h3>Extra members</h3>
       {list.length ? (
-        <div className="tablewrap">
+        <div className="tablewrap" id={shown.anchorId}>
           <table>
             <thead>
               <tr>
@@ -157,7 +160,7 @@ export default function ExtraMembers({ communityId, email }) {
               </tr>
             </thead>
             <tbody>
-              {list.map((one) => (
+              {shown.chunk.map((one) => (
                 // The uuid is the row's identity, and the id every "for whom?" picker will carry.
                 <tr key={one.member_id}>
                   <td className="name">
@@ -187,6 +190,7 @@ export default function ExtraMembers({ communityId, email }) {
       ) : (
         <p className="tally">Nobody has been added for this community yet.</p>
       )}
+      <Pager state={shown} noun={shown.total === 1 ? "member" : "members"} />
     </section>
   );
 }

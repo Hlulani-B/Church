@@ -16,6 +16,12 @@
 services:
   - type: web
     name: church-server
+
+    # Worth writing down because it has already cost a broken heartbeat: the hostname is NOT this name.
+    # Render took `church-server` and appended a suffix because the bare name was claimed by another
+    # account, so the service answers on https://church-server-94hi.onrender.com — the host the browser
+    # bundle is built with, and the one .github/workflows/keep-alive.yml must knock on. The name alone
+    # belongs to someone else and returns 404, which looks exactly like a dead route.
     runtime: node
     plan: free
     rootDir: server

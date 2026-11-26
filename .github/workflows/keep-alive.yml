@@ -10,9 +10,13 @@
 # run is worth reading too — `insert_failed` and `delete_failed` are different problems, and a table
 # that keeps rows it was supposed to clean up is one of them.
 #
-# The url comes from the root render.yaml, whose one service is named `church-server`. Rename or
-# move that service and this stops working, so a repository variable can override the default:
-# Settings → Secrets and variables → Actions → New repository variable → `SERVER_URL`.
+# The url is the one the service answers on, which is NOT simply its name. Render builds the hostname
+# from the service name in the root render.yaml — `church-server` — and appends a suffix when that name
+# is already taken by another account, so this service lives at `church-server-94hi.onrender.com`. The
+# bare name resolves to somebody else's app, and it fails quietly: it answers 404 on /keep-alive and
+# 404 on /health, which reads like a broken route rather than like the wrong address. A repository
+# variable still wins over the default: Settings → Secrets and variables → Actions → New repository
+# variable → `SERVER_URL`, which is what to use if the service is ever recreated and changes host.
 
 name: keep-alive
 
@@ -32,12 +36,32 @@ jobs:
     steps:
       - name: POST /keep-alive
         env:
-          SERVER_URL: ${{ vars.SERVER_URL || 'https://church-server.onrender.com' }}
+          SERVER_URL: ${{ vars.SERVER_URL || 'https://church-server-94hi.onrender.com' }}
         run: |
           # --fail-with-body turns a 4xx or 5xx into a failed run while still printing what the
           # server said, and --max-time 90 is generous on purpose: a free instance that has fallen
           # asleep spends most of that waking up, and a slow boot is not the same as a broken route.
-          curl --fail-with-body --silent --show-error \
-               --request POST --max-time 90 \
-               "$SERVER_URL/keep-alive"
-          echo
+          #
+          # Knocked twice because the one failure that is not a failure is a cold start that overran
+          # the 90 seconds. A route that answered 500 or 404 will do it again a few seconds later, so
+          # the retry costs little and only turns a red run green when the truth was "it was asleep".
+          answered=""
+          for attempt in 1 2; do
+            if curl --fail-with-body --silent --show-error \
+                   --request POST --max-time 90 \
+                   "$SERVER_URL/keep-alive"; then
+              echo
+              answered=yes
+              break
+            fi
+            echo
+            echo "knock $attempt on $SERVER_URL/keep-alive did not answer; a sleeping free instance can spend the whole 90s waking, so trying once more" >&2
+            sleep 20
+          done
+
+          # The sentence that matters most is the one naming the host: a wrong url and a dead service
+          # otherwise look identical, and this workflow has been failing on exactly that difference.
+          if [ -z "$answered" ]; then
+            echo "the keep-alive route never answered on $SERVER_URL — check that host against the Live URL on the Render service before reading this as a database problem" >&2
+            exit 1
+          fi

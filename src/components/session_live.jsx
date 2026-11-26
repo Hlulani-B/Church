@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { SessionFetch } from "../page_functions/session.js";
 import { clock, askPosition } from "../page_functions/place.js";
 import { pushToast } from "./toast.jsx";
-import Pager, { usePager } from "./pager.jsx";
+import Pager, { usePager, PER_PAGE } from "./pager.jsx";
 
 const sessions = new SessionFetch();
 
@@ -178,7 +178,7 @@ export default function SessionLive({ community_id }) {
 
   // A handful of live sessions is all this ever holds, but it is a list of cards like any other, so
   // it is cut and counted the same way. The hook comes before the empty check, which leaves early.
-  const going = usePager(rows, 5, community_id);
+  const going = usePager(rows, PER_PAGE, community_id);
 
   // The server returns nothing when there's no live session — so this section vanishes entirely.
   if (!rows.length) return null;

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import Menu from "../components/menu.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
-import Pager, { usePager } from "../components/pager.jsx";
+import Pager, { usePager, PER_PAGE } from "../components/pager.jsx";
 import { FeedbackFetch } from "../page_functions/feedback.js";
 
 const feedback = new FeedbackFetch();
@@ -124,7 +124,7 @@ export default function FeedbackList() {
   const yeses = rows.filter((one) => one.solves_problem).length;
 
   // Ten notes a screen: this list is read for what it says, not for how long it is.
-  const notes = usePager(rows, 10);
+  const notes = usePager(rows, PER_PAGE);
 
   return (
     <div className="fx">

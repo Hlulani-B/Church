@@ -396,7 +396,7 @@ export default function AdminTestimonies() {
     An export writes out the search that is on screen, not whatever has been typed into the
     boxes since, so the file and the list underneath the bar always answer for the same days and
     the same people. Both writers read every page of the search themselves: a file that stopped
-    at the hundred on screen would be a different answer from the one this page just gave.
+    at the ten on screen would be a different answer from the one this page just gave.
   */
   async function writeOut(kind) {
     setWriting(kind);
@@ -587,7 +587,7 @@ export default function AdminTestimonies() {
               );
             })}
 
-            {/* Paging stays inside the search: turning to the next hundred has to keep the
+            {/* Paging stays inside the search: turning to the next ten has to keep the
                 dates and the name that were asked for. */}
             {page.total > page.shown || page.from > 0 ? (
               <div className="row">
@@ -605,7 +605,7 @@ export default function AdminTestimonies() {
                     })
                   }
                 >
-                  Newer
+                  &larr; Newer
                 </button>
                 <button
                   className="ghost"
@@ -615,7 +615,7 @@ export default function AdminTestimonies() {
                     setWanted({ community_id: communityId, offset: last, from, to, name })
                   }
                 >
-                  Older
+                  Older &rarr;
                 </button>
               </div>
             ) : null}

@@ -75,7 +75,7 @@ export default function ExtraEvent({ communityId, email }) {
   const people = members.community_id === communityId ? mapExtraMembers(members.list) : [];
   const list = rows.community_id === communityId ? rows.list : [];
   // Every day an absent friend was marked for is a row, so this register grows without ever being
-  // cleaned; twenty-five of them are printed, and the badge above still counts the whole of it.
+  // cleaned; ten of them are printed, and the badge above still counts the whole of it.
   const shown = usePager(list, PER_PAGE, communityId);
 
   const load = useCallback(() => {

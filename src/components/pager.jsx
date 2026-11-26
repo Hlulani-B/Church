@@ -7,7 +7,7 @@ import { useId, useState } from "react";
   pile of rows, the menu nowhere, the next thing to look for still further down.
 
   So a list is shown a chunk at a time. `usePager` cuts the array it is handed and keeps track of
-  which chunk is on the screen; `Pager` says which chunk that is — the 25 rows of 140 that are
+  which chunk is on the screen; `Pager` says which chunk that is — the 10 rows of 140 that are
   printed here, and which page of how many — and offers the two moves that fit the hand. Nothing is
   fetched differently and nothing is counted differently: the whole list is still read, so the total
   is the real total and a search still answers for every row it matched, not just the ones shown.
@@ -18,7 +18,7 @@ import { useId, useState } from "react";
   column of cards and a popup, none of which share a stylesheet.
 
   Turning a chunk moves the screen back to where the list begins. A reader who asked for the next
-  twenty-five names wants to read them from the first, not to find themselves at the foot of a
+  ten names wants to read them from the first, not to find themselves at the foot of a
   page that has just changed underneath them. The host marks that place by giving the element its
   rows start at the hook's `anchorId`; a list that does not is simply left where it is. An id
   rather than a ref, because a page reads the chunk it is printing and a ref must not be read
@@ -32,9 +32,10 @@ import { useId, useState } from "react";
     <Pager state={people} noun="people" />
 */
 
-// How many rows a list shows before it is cut. Long enough that a small fellowship never sees a
-// second page at all, short enough that the heading of a page stays on the screen with it.
-export const PER_PAGE = 25;
+// How many rows a list shows before it is cut, everywhere a list is printed. Ten of them fit a
+// screen with the heading of the page still in sight, which is the test a chunk has to pass: a
+// reader who is halfway down a roster should never lose the top of it.
+export const PER_PAGE = 10;
 
 const css = `
 .kp-pg{margin:18px 0 0;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 18px;font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
@@ -116,7 +117,7 @@ export function usePager(items, size = PER_PAGE, reset = null) {
 
 /*
   Which chunk is on the screen, and the two moves between chunks. It says the number of rows rather
-  than only the page, because "1–25 of 140" answers the question a person scrolling a roster is
+  than only the page, because "1–10 of 140" answers the question a person scrolling a roster is
   actually asking: how much of this fellowship is still down there.
 */
 export default function Pager({ state, noun = "" }) {

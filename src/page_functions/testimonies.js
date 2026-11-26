@@ -22,6 +22,13 @@ import { prepareTestimonyFile, uploadTestimonyFile } from './testimony_files.js'
 // A page of testimonies, and how far one search is willing to walk for an export.
 const PAGE = 100
 const PAGES = 100
+/*
+  How many of them the screen prints at a time. A sharing is a card carrying everything somebody
+  wrote, so a hundred of them is a scroll with no bottom in sight; ten are shown, and the rest are
+  a click away. The read above stays as wide as it is, because what may be read is decided row by
+  row here in the browser — the total has to be the whole of the list, not the ten on it.
+*/
+const AT_A_TIME = 10
 
 /*
   A search takes { from, to, name }. The dates are YYYY-MM-DD and either one can stand alone,
@@ -200,10 +207,10 @@ export class TestimoniesFetch {
   }
 
   /*
-    A hundred testimonies, newest first, each one carrying the name of whoever shared it.
+    The testimonies of ten, newest first, each one carrying the name of whoever shared it.
     testimony_id settles a tie between two rows of the same date, so an offset page can neither
     show one twice nor skip it, and the exact count rides along on the same read so the page can
-    say which hundred of how many it is showing. With no search it is every testimony in the
+    say which ten of how many it is showing. With no search it is every testimony in the
     community, which is what the page opens on. `matched` is how many people a name search
     picked out: zero of them is a different sentence from nobody sharing anything.
   */
@@ -225,11 +232,11 @@ export class TestimoniesFetch {
       if (!data.length || matched.length >= serverCount) break
     }
     const readable = await openRows(matched, wanted.known, viewer_email)
-    const shown = readable.slice(start, start + PAGE)
+    const shown = readable.slice(start, start + AT_A_TIME)
     return {
       total: readable.length,
       from: start,
-      // What the three testimony pages read: the rows of this page, and how many they are.
+      // What the three testimony pages read: the ten rows of this page, and how many they are.
       testimonies: shown,
       shown: shown.length,
       matched: wanted.emails?.length ?? null,
@@ -237,7 +244,7 @@ export class TestimoniesFetch {
   }
 
   /*
-    Every testimony the search matched, not just the hundred on screen: an export that stopped
+    Every testimony the search matched, not just the ten on screen: an export that stopped
     at the page break would be a different answer from the one the page just gave. The count
     that came back with the first page is what the walk has to reach, and a read that ends short
     of it is said out loud rather than handed over as the whole set.

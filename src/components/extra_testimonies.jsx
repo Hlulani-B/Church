@@ -3,7 +3,7 @@ import extra from "../page_functions/extra.js";
 import { UserFetch } from "../page_functions/user.js";
 import { decryptText } from "../page_functions/crypto.js";
 import PeoplePicker, { mapUsers, mapExtraMembers } from "./people_picker.jsx";
-import Pager, { usePager } from "./pager.jsx";
+import Pager, { usePager, PER_PAGE } from "./pager.jsx";
 
 /*
   The testimonies kept for the people who never join the app, shown under the real testimony list on
@@ -36,37 +36,51 @@ import Pager, { usePager } from "./pager.jsx";
 const directory = new UserFetch();
 
 const css = `
-.xt{margin:56px 0 0;padding-top:28px;border-top:1px solid #e3e3e3}
-.xt h3{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#666;margin:0 0 12px;font-weight:600;display:flex;align-items:center;gap:10px}
-.xt h3 .count{background:#111;color:#fff;border-radius:999px;font-size:12px;letter-spacing:0;padding:1px 10px}
-.xt .lede{font-size:14px;color:#666;margin:0 0 18px;max-width:62ch}
-.xt .card{border:1px solid #e3e3e3;border-radius:2px;padding:20px 22px;background:#fafafa;margin:0 0 26px}
-.xt .grid{display:grid;gap:16px}
+.xt{margin:56px 0 0;padding-top:32px;border-top:1px solid #e6e6e9}
+.xt h3{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#6b6b76;margin:0 0 10px;font-weight:700;display:flex;align-items:center;gap:10px}
+.xt h3 .count{background:#111;color:#fff;border-radius:999px;font-size:12px;letter-spacing:0;padding:2px 10px;font-weight:600}
+.xt .lede{font-size:15px;color:#6b6b76;margin:0 0 20px;max-width:62ch;line-height:1.6}
+.xt .card{border:1px solid #e6e6e9;border-radius:12px;padding:22px 24px;background:#fff;margin:0 0 28px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.xt .grid{display:grid;gap:18px}
 .xt .two{display:grid;gap:16px;grid-template-columns:1fr 1fr}
-.xt .xt label{display:flex;flex-direction:column;gap:6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#666;font-weight:600}
-.xt .xt label > input,.xt .xt label > textarea,.xt .xt label > select{font:inherit;font-size:16px;letter-spacing:normal;text-transform:none;font-weight:400;color:#111;background:#fff;border:1px solid #bdbdbd;border-radius:2px;padding:10px 12px;min-width:0}
-.xt .xt label > textarea{min-height:120px;resize:vertical;line-height:1.55}
-.xt .xt label > input:focus,.xt .xt label > textarea:focus{outline:none;border-color:#111}
-.xt .go{background:#111;color:#fff;border:0;border-radius:2px;padding:11px 22px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;justify-self:start}
+.xt label{display:flex;flex-direction:column;gap:6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#6b6b76;font-weight:600}
+.xt label > input,.xt label > textarea,.xt label > select{font:inherit;font-size:16px;letter-spacing:normal;text-transform:none;font-weight:400;color:#111;background:#fff;border:1px solid #cfcfd6;border-radius:8px;padding:11px 13px;min-width:0;transition:border-color .15s,box-shadow .15s}
+.xt label > textarea{min-height:130px;resize:vertical;line-height:1.6}
+.xt label > input:focus,.xt label > textarea:focus,.xt label > select:focus{outline:none;border-color:#111;box-shadow:0 0 0 3px rgba(17,17,17,.12)}
+.xt .go{background:#111;color:#fff;border:0;border-radius:8px;padding:12px 22px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;justify-self:start;transition:background .15s,transform .05s}
+.xt .go:hover:not(:disabled){background:#2b2b33}
+.xt .go:active:not(:disabled){transform:translateY(1px)}
 .xt .go:disabled{opacity:.55;cursor:default}
-.xt .fail{color:#a11111;font-size:14px;margin:14px 0 0}
-.xt .ok{color:#1c7a34;font-size:14px;margin:14px 0 0}
-.xt .tally{font-size:14px;color:#666;margin:0 0 16px}
+.xt .fail{color:#a11111;background:#fdecec;border-radius:8px;font-size:14px;margin:14px 0 0;padding:10px 12px}
+.xt .ok{color:#1c7a34;background:#e9f6ed;border-radius:8px;font-size:14px;margin:14px 0 0;padding:10px 12px}
+.xt .tally{font-size:15px;color:#6b6b76;margin:0 0 16px;padding:22px;text-align:center;border:1px dashed #cfcfd6;border-radius:12px;background:#fafafb}
 
-.xt .item{display:grid;grid-template-columns:44px 1fr;gap:16px;border:1px solid #e3e3e3;border-radius:2px;padding:18px 20px;margin:0 0 12px;background:#fff}
-.xt .item .avatar{width:44px;height:44px;border-radius:50%;background:#666;color:#fff;display:flex;align-items:center;justify-content:center;font-family:"Playfair Display",Georgia,serif;font-size:19px}
-.xt .item .meta{display:flex;justify-content:space-between;gap:4px 14px;flex-wrap:wrap;font-size:13px;color:#666}
-.xt .item .meta .who{color:#111;font-weight:600;font-size:14px}
-.xt .item .body{margin:8px 0 0;font-size:16px;line-height:1.7;color:#222}
-.xt .row{display:flex;gap:10px;margin:14px 0 0}
-.xt .ghost{background:#fff;color:#111;border:1px solid #bdbdbd;border-radius:2px;padding:9px 16px;font-size:14px;font-family:inherit;cursor:pointer}
+.xt .item{display:grid;grid-template-columns:48px 1fr;gap:16px;border:1px solid #e6e6e9;border-radius:12px;padding:18px 20px;margin:0 0 14px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:box-shadow .15s,border-color .15s}
+.xt .item:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);border-color:#d6d6dc}
+.xt .item .avatar{width:48px;height:48px;border-radius:50%;background:#3b3b46;color:#fff;display:flex;align-items:center;justify-content:center;font-family:"Playfair Display",Georgia,serif;font-size:20px}
+.xt .item .meta{display:flex;justify-content:space-between;gap:4px 14px;flex-wrap:wrap;font-size:13px;color:#6b6b76}
+.xt .item .meta .who{color:#111;font-weight:600;font-size:15px}
+.xt .item .body{margin:10px 0 0;font-size:16px;line-height:1.7;color:#25252b;overflow-wrap:anywhere}
+.xt .item .body a{color:#111;font-weight:600}
+.xt .row{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0 0}
+.xt .ghost{background:#fff;color:#111;border:1px solid #cfcfd6;border-radius:8px;padding:9px 16px;font-size:14px;font-family:inherit;cursor:pointer;transition:background .15s,border-color .15s}
+.xt .ghost:hover:not(:disabled){background:#f3f3f5;border-color:#b5b5be}
 .xt .ghost:disabled{opacity:.45;cursor:default}
 
-.xt .veil{position:fixed;inset:0;background:rgba(20,20,20,.5);display:flex;align-items:center;justify-content:center;padding:24px;z-index:20}
-.xt .pop{background:#fff;border-radius:2px;width:100%;max-width:560px;max-height:calc(100vh - 48px);overflow:auto;padding:26px 28px 28px;box-shadow:0 20px 44px rgba(0,0,0,.28)}
+.xt .veil{position:fixed;inset:0;background:rgba(20,20,24,.55);display:flex;align-items:center;justify-content:center;padding:24px;z-index:20}
+.xt .pop{background:#fff;border-radius:14px;width:100%;max-width:560px;max-height:calc(100vh - 48px);overflow:auto;padding:28px 30px 30px;box-shadow:0 24px 56px rgba(0,0,0,.3)}
 .xt .pop h2{font-size:22px;margin:0 0 6px}
-.xt .pop .sub{color:#666;font-size:14px;margin:0}
-.xt .pop .actions{display:flex;justify-content:flex-end;gap:10px;margin:24px 0 0}
+.xt .pop .sub{color:#6b6b76;font-size:14px;margin:0}
+.xt .pop .actions{display:flex;justify-content:flex-end;gap:10px;margin:26px 0 0}
+
+@media (max-width:560px){
+  .xt .card{padding:18px 16px}
+  .xt .item{grid-template-columns:36px 1fr;gap:12px;padding:14px}
+  .xt .item .avatar{width:36px;height:36px;font-size:16px}
+  .xt .two{grid-template-columns:1fr}
+  .xt .pop{padding:22px 18px}
+  .xt .pop .actions{flex-wrap:wrap}
+}
 `;
 
 function pretty(date) {
@@ -138,7 +152,7 @@ export default function ExtraTestimonies({ communityId, email, privileged = fals
   const list = rows.community_id === communityId ? rows.list : [];
   // A testimony is a card with the whole of somebody's sharing on it, so ten of them is already a
   // long scroll; the rest are a click away and still counted by the line underneath.
-  const shown = usePager(list, 10, communityId);
+  const shown = usePager(list, PER_PAGE, communityId);
   const memberPeople = members.community_id === communityId ? mapExtraMembers(members.list) : [];
   const userPeople = users.community_id === communityId ? mapUsers(users.list) : [];
 

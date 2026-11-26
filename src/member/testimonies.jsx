@@ -148,7 +148,7 @@ export default function MemberTestimonies() {
   const [noSession, setNoSession] = useState(false);
   const [fetched, setFetched] = useState(null);
   const [error, setError] = useState("");
-  // The hundred on screen, tagged with the community it was read for.
+  // The ten on screen, tagged with the community it was read for.
   const [offset, setOffset] = useState(0);
   /*
     The popup the add button opens: the day, the type and the words or file. `refresh` is what
@@ -340,7 +340,7 @@ export default function MemberTestimonies() {
                       disabled={page.from === 0}
                       onClick={() => setOffset(Math.max(0, page.from - page.shown))}
                     >
-                      Newer
+                      &larr; Newer
                     </button>
                     <button
                       className="ghost"
@@ -348,7 +348,7 @@ export default function MemberTestimonies() {
                       disabled={last >= page.total}
                       onClick={() => setOffset(last)}
                     >
-                      Older
+                      Older &rarr;
                     </button>
                   </div>
                 ) : null}

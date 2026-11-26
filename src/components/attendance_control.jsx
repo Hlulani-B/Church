@@ -3,7 +3,7 @@ import { SessionFetch } from "../page_functions/session.js";
 import { clock } from "../page_functions/place.js";
 import QrCard from "./qr_code.jsx";
 import { pushToast } from "./toast.jsx";
-import Pager, { usePager } from "./pager.jsx";
+import Pager, { usePager, PER_PAGE } from "./pager.jsx";
 
 const sessions = new SessionFetch();
 
@@ -265,7 +265,7 @@ export default function AttendanceControl({ community_id, admin = false }) {
   // takes over. The hook sits above the empty check: a hook cannot be asked to keep out of a
   // render that decided to leave early. These cards carry no anchor, so the screen stays where the
   // reader left it — the box is a stack of cards at the top of a dashboard, not a long register.
-  const live = usePager(ordered, 10, community_id);
+  const live = usePager(ordered, PER_PAGE, community_id);
 
   // Nothing is open, scheduled or recently cancelled: there is nothing for this box to say.
   if (!rows.length) return null;

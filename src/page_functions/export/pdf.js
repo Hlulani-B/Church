@@ -12,6 +12,7 @@
 */
 
 import { drawn } from '../table_files.js'
+import { loadJsPdf } from './libraries.js'
 
 const PAGE = { width: 595.28, height: 841.89 } // A4, in points
 const MARGIN = 44
@@ -45,7 +46,9 @@ const FILL = '#f4f4f4'
   is what a testimony and a receipt list use, where a table would only clip both.
 */
 export async function renderPdf(spec) {
-  const { jsPDF } = await import('jspdf')
+  // Loaded through ./libraries.js rather than imported here so that a chunk left behind by a
+  // redeploy arrives as "reload the page" instead of as a browser's own words about modules.
+  const jsPDF = await loadJsPdf()
   const doc = new jsPDF({ unit: 'pt', format: 'a4', compress: true })
   const sheet = new Sheet(printable(doc))
   sheet.run(spec)

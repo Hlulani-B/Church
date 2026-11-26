@@ -8,12 +8,16 @@
   shrink.
 */
 
+import { loadJsZip } from './libraries.js'
+
 // DEFLATE 6: the honest middle. A community archive is mostly page text, and this is a one-off
 // download a person makes before deleting rows, not a hot path worth maxing compression for.
 const COMPRESSION = 6
 
 export async function zipBlobs(entries, { onProgress } = {}) {
-  const JSZip = (await import('jszip')).default
+  // Through ./libraries.js, for the same reason the pdf does: a chunk the last redeploy renamed has
+  // to say so in words a person can act on.
+  const JSZip = await loadJsZip()
   const zip = new JSZip()
   for (const one of entries) {
     if (!one || !one.blob || !one.name) continue

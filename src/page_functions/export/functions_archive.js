@@ -79,9 +79,33 @@ export async function buildFunctionsArchive({ community_id }, { onProgress } = {
   )
 
   const results = built.filter((one) => one?.ok).map((one) => one.value)
-  const failures = built
-    .map((one, index) => (one?.ok ? null : { title: list[index]?.name || `function ${list[index]?.id}`, reason: one?.error?.message || 'it could not be read' }))
+  const broken = built
+    .map((one, index) => (one?.ok ? null : { index, error: one?.error }))
     .filter(Boolean)
+  const failures = broken.map(({ index, error }) => ({
+    title: list[index]?.name || `function ${list[index]?.id}`,
+    reason: error?.message || 'it could not be read',
+  }))
+
+  /*
+    A zip holding nothing but its own contents page is not an archive, and offering it as one is how a
+    person ends up deleting rows they believed they had saved. When not a single function came out, the
+    cause is one thing rather than eighteen, and it belongs in the sentence under the button instead of
+    in a file nobody opens — so it is raised, not zipped. Partial archives still download, and still name
+    what is missing, because forty-one good functions are worth having.
+
+    A library that would not load is rethrown as it came: the flag on it is what earns the button its
+    reload link, and rewriting it here would bury the only recovery there is.
+  */
+  if (!results.length) {
+    const stale = broken.find(({ error }) => error?.stale_library)
+    if (stale) throw stale.error
+    throw new Error(
+      failures.length
+        ? `None of the ${list.length} functions could be built. ${failures[0].title}: ${failures[0].reason}`
+        : `None of the ${list.length} functions could be built.`,
+    )
+  }
 
   const entries = [
     { name: '00_contents.txt', blob: new Blob([contents({ list, results, failures, on: stamp() })], { type: 'text/plain' }) },

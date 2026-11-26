@@ -10,6 +10,7 @@ import extraFunctionPaidRoutes from './extra_function_paid.js'
 import extraServingsRoutes from './extra_servings.js'
 import testimonyRoutes from './testimony.js'
 import uploadRoutes from './upload.js'
+import prayerTopicsRoutes from './prayer_topics.js'
 
 /*
   Every feature router mounts here. Add a new file under routes/ and mount it on its own
@@ -45,5 +46,13 @@ router.use('/extra-servings', extraServingsRoutes)
 */
 router.use('/testimony', testimonyRoutes)
 router.use('/upload', uploadRoutes)
+
+/*
+  prayer_topics is read as well as written here, unlike the extra_* tables it sits beside: the row
+  carries the address that asked for the prayer, and the list is only ever wanted inside one
+  community. So the table has row level security with no policy on it, and every request comes
+  through these four endpoints on the service key rather than straight from the browser.
+*/
+router.use('/prayer-topics', prayerTopicsRoutes)
 
 export default router

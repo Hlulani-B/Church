@@ -12,10 +12,16 @@ export class Community {
     if (!community_id) throw new Error('community_id is required')
   }
 
-  async create({ name }) {
+  /*
+    Opening a community. `created_by` is the address that asked, written by /api/self off the caller's
+    own id token — never off the body — which is what makes it a record of who founded this group
+    rather than a claim whoever typed the name. It is what the delete-everything path is later
+    compared against, so a community opened before the column existed has no owner it can prove.
+  */
+  async create({ name, created_by }) {
     const { data, error } = await this.client
       .from(TABLE)
-      .insert({ name })
+      .insert({ name, created_by: created_by || null })
       .select()
       .single()
     if (error) throw error

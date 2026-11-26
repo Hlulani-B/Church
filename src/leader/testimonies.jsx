@@ -3,10 +3,14 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
 import { TestimoniesFetch } from "../page_functions/testimonies.js";
 import { decryptText } from "../page_functions/crypto.js";
+import { UserFetch } from "../page_functions/user.js";
 import LeaderMenu from "./menu.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
 import BackToCommunities from "../components/back.jsx";
 import ExtraTestimonies from "../components/extra_testimonies.jsx";
+import DownloadTestimonies from "../components/download_testimonies.jsx";
+import ProofViewer from "../components/proof_viewer.jsx";
+import PeoplePicker, { mapUsers } from "../components/people_picker.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
 const accounts = new Auth();
@@ -25,6 +29,13 @@ try {
 } catch (e) {
   setupError = e.message;
 }
+
+/*
+  The people the authorise box lists, on the read every For-who box in the app already makes. A
+  leader is allowed it, so the address that gets stored is picked by name instead of typed out of
+  memory.
+*/
+const directory = new UserFetch();
 
 const css = `
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;1,500&display=swap");
@@ -130,7 +141,6 @@ function TestimonyBody({ value }) {
 
   const encrypted = typeof value === "string" && value.startsWith("enc:v1:");
   const isUrl = typeof value === "string" && /^https?:\/\//i.test(value);
-  const ext = isUrl ? value.split("?")[0].split(".").pop().toLowerCase() : "";
 
   useEffect(() => {
     if (!encrypted) return undefined;
@@ -143,22 +153,12 @@ function TestimonyBody({ value }) {
     };
   }, [value, encrypted]);
 
-  if (isUrl) {
-    if (["png", "jpg", "jpeg", "webp", "gif", "avif"].includes(ext)) {
-      return <img src={value} alt="Testimony image" style={{ maxWidth: "100%", height: "auto" }} />;
-    }
-    const label =
-      ext === "pdf"
-        ? "Open the PDF testimony"
-        : ext === "docx"
-          ? "Download the document"
-          : "Open the attached file";
-    return (
-      <a href={value} target="_blank" rel="noreferrer">
-        {label}
-      </a>
-    );
-  }
+  /*
+    A file is opened the way a payment receipt is, on this screen and at the size of the screen: an
+    image drawn small in the card cannot be read, and a link that leaves for a new tab loses the list
+    the reader came from. The viewer draws it, maximises it and saves it without that detour.
+  */
+  if (isUrl) return <ProofViewer url={value} title="Testimony" />;
 
   if (encrypted) {
     if (failed) return <span>{failed}</span>;
@@ -191,15 +191,23 @@ export default function LeaderTestimonies() {
     under the search that is on screen rather than only after a reload.
   */
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ date: "", body: "", type: "text", file: null, allow_all: true, authorise: "" });
+  const [draft, setDraft] = useState({ date: "", body: "", type: "text", file: null, allow_all: true, authorise: [] });
   const [saving, setSaving] = useState(false);
   const [draftError, setDraftError] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState(setupError);
   const [editing, setEditing] = useState(null);
-  const [editDraft, setEditDraft] = useState({ allow_all: true, authorise: "" });
+  const [editDraft, setEditDraft] = useState({ allow_all: true, authorise: [] });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
+  /*
+    This community's people for the two authorise boxes, tagged with the community they were read
+    for so a switch cannot leave one fellowship's names in another's picker. The delete is the one
+    write that is asked about twice, because a sharing cannot be typed out again afterwards.
+  */
+  const [roster, setRoster] = useState({ community_id: "", list: [] });
+  const [confirming, setConfirming] = useState("");
+  const [removing, setRemoving] = useState("");
 
   useEffect(() => {
     return accounts.onChange((user) => {
@@ -256,6 +264,21 @@ export default function LeaderTestimonies() {
   }, [email, communityId, offset, from, to, name, refresh]);
 
   /*
+    The picker's people, read once per community. A failed read leaves the box with nobody in it
+    and the box says so: choosing who may read is optional, and the list underneath does not depend
+    on it.
+  */
+  useEffect(() => {
+    if (!communityId || setupError) return;
+    directory
+      .getUsers(communityId)
+      .then((result) => setRoster({ community_id: communityId, list: result || [] }))
+      .catch(() => setRoster({ community_id: communityId, list: [] }));
+  }, [communityId]);
+
+  const rosterPeople = roster.community_id === communityId ? mapUsers(roster.list) : [];
+
+  /*
     The dates are compared as written, so a first date after the second is a search that can
     only come back empty. It is said here instead of shown as a zero. The name is trimmed here
     so a search for a word that is only spaces is no search at all.
@@ -287,7 +310,7 @@ export default function LeaderTestimonies() {
   }
 
   function openAdd() {
-    setDraft({ date: today(), body: "", type: "text", file: null, allow_all: true, authorise: "" });
+    setDraft({ date: today(), body: "", type: "text", file: null, allow_all: true, authorise: [] });
     setDraftError("");
     setAdding(true);
   }
@@ -301,7 +324,7 @@ export default function LeaderTestimonies() {
   function openEdit(one) {
     setEditDraft({
       allow_all: one.allow_all !== false,
-      authorise: (Array.isArray(one.authorise) ? one.authorise : []).join(", "),
+      authorise: Array.isArray(one.authorise) ? one.authorise : [],
     });
     setEditError("");
     setEditing(one);
@@ -317,14 +340,10 @@ export default function LeaderTestimonies() {
     setEditSaving(true);
     setEditError("");
     try {
-      const authorise = String(editDraft.authorise || "")
-        .split(",")
-        .map((addr) => addr.trim())
-        .filter(Boolean);
       await testimonies.updateAuthorise({
         testimony_id: editing.testimony_id,
         allow_all: editDraft.allow_all,
-        authorise: editDraft.allow_all ? [] : authorise,
+        authorise: editDraft.allow_all ? [] : editDraft.authorise,
       });
       setEditing(null);
       setNote("Who may read that testimony is updated.");
@@ -333,6 +352,32 @@ export default function LeaderTestimonies() {
       setEditError(e.message);
     } finally {
       setEditSaving(false);
+    }
+  }
+
+  /*
+    Deleting a testimony, which only its own author may do — deleteTestimony refuses a row that
+    belongs to somebody else, so the button is only ever printed on the viewer's own cards. The
+    first click asks and the second one writes, because a sharing is not something to lose to a
+    stray click, and there is no way to get it back.
+  */
+  async function remove(one) {
+    if (confirming !== one.testimony_id) {
+      setConfirming(one.testimony_id);
+      return;
+    }
+    setRemoving(one.testimony_id);
+    setError("");
+    try {
+      await testimonies.deleteTestimony({ testimony_id: one.testimony_id, email });
+      setConfirming("");
+      setNote("Your testimony is deleted.");
+      setRefresh((count) => count + 1);
+    } catch (e) {
+      setConfirming("");
+      setError(e.message);
+    } finally {
+      setRemoving("");
     }
   }
 
@@ -347,10 +392,6 @@ export default function LeaderTestimonies() {
     setSaving(true);
     setDraftError("");
     try {
-      const authorise = String(draft.authorise || "")
-        .split(",")
-        .map((addr) => addr.trim())
-        .filter(Boolean);
       const one = await testimonies.addTestimony({
         community_id: communityId,
         email,
@@ -359,7 +400,7 @@ export default function LeaderTestimonies() {
         body: draft.body,
         file: draft.file,
         allow_all: draft.allow_all,
-        authorise: draft.allow_all ? [] : authorise,
+        authorise: draft.allow_all ? [] : draft.authorise,
       });
       setAdding(false);
       /*
@@ -535,6 +576,15 @@ export default function LeaderTestimonies() {
               <button className="ghost" type="button" disabled={!!writing} onClick={() => writeOut("pdf")}>
                 {writing === "pdf" ? "Writing…" : "Export PDF"}
               </button>
+              {/* The readable one: the two buttons above write the stored rows, which for a testimony
+                  are ciphertext and urls. This opens the words and pastes the files. */}
+              <DownloadTestimonies
+                community_id={communityId}
+                community_name={leaderName}
+                viewer_email={email}
+                search={{ from, to, name }}
+                for_all
+              />
             </span>
           </form>
         )}
@@ -565,6 +615,12 @@ export default function LeaderTestimonies() {
               */
               const named = `${one.name} ${one.surname}`.trim();
               const who = named || "Someone who has left";
+              /*
+                A testimony belongs to the one who shared it, so the delete stands only on the
+                viewer's own cards. "Update who can see" stays on every one of them, because a leader
+                is the person a fellowship asks to fix a reader list it cannot open itself.
+              */
+              const mine = String(one.email || "").toLowerCase() === email.toLowerCase();
               return (
                 <article className="item" key={one.testimony_id}>
                   <span className="avatar" aria-hidden="true">
@@ -580,6 +636,31 @@ export default function LeaderTestimonies() {
                       <button className="ghost" type="button" onClick={() => openEdit(one)}>
                         Update who can see
                       </button>
+                      {mine && confirming !== one.testimony_id ? (
+                        <button className="ghost" type="button" onClick={() => remove(one)}>
+                          Delete testimony
+                        </button>
+                      ) : null}
+                      {mine && confirming === one.testimony_id ? (
+                        <>
+                          <button
+                            className="ghost"
+                            type="button"
+                            disabled={removing === one.testimony_id}
+                            onClick={() => remove(one)}
+                          >
+                            {removing === one.testimony_id ? "Deleting…" : "Yes, delete it"}
+                          </button>
+                          <button
+                            className="ghost"
+                            type="button"
+                            disabled={removing === one.testimony_id}
+                            onClick={() => setConfirming("")}
+                          >
+                            Keep it
+                          </button>
+                        </>
+                      ) : null}
                     </div>
                   </div>
                 </article>
@@ -701,12 +782,13 @@ export default function LeaderTestimonies() {
 
             {!draft.allow_all && (
               <label>
-                Authorise (emails, comma-separated)
-                <input
-                  type="text"
+                Authorise
+                <PeoplePicker
+                  multiple
+                  people={rosterPeople}
                   value={draft.authorise}
-                  placeholder="someone@example.com, another@example.com"
-                  onChange={(event) => setDraft({ ...draft, authorise: event.target.value })}
+                  onChange={(ids) => setDraft({ ...draft, authorise: ids })}
+                  placeholder="Search by name to authorise"
                 />
               </label>
             )}
@@ -752,12 +834,13 @@ export default function LeaderTestimonies() {
 
             {!editDraft.allow_all && (
               <label>
-                Authorised emails (comma-separated)
-                <input
-                  type="text"
+                Authorised people
+                <PeoplePicker
+                  multiple
+                  people={rosterPeople}
                   value={editDraft.authorise}
-                  placeholder="someone@example.com, another@example.com"
-                  onChange={(event) => setEditDraft({ ...editDraft, authorise: event.target.value })}
+                  onChange={(ids) => setEditDraft({ ...editDraft, authorise: ids })}
+                  placeholder="Search by name to authorise"
                 />
               </label>
             )}

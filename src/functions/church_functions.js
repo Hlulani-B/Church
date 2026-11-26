@@ -387,6 +387,61 @@ export class ChurchFunctions {
 
     return this.#view(one, user_email)
   }
+
+  /*
+    A leader's signature on one payment row, and taking it back. This is the only place in this file
+    that writes `confirmed_by`, and it is the only way a confirmation happens at all: the table sits
+    behind row level security with no policy, so a browser cannot sign a receipt by itself.
+
+    Three things are settled before anything is written. The function is compared with the community
+    the caller was gated on, through the same #one every other read under a function starts from, so
+    a leader of one fellowship cannot sign a row in another. `confirmed_by` is handed in by
+    /api/leader off the caller's token and never read back off the body, because it is the answer to
+    *who checked this*, and a page choosing it would make the column worthless. And the row has to
+    already hold a receipt: `paid` false means the person gave a date instead of money, and there is
+    nothing to check off on a promise — confirming one would say the money is in when it is not.
+
+    Taking a signature back clears both columns together. The table's own check lets `confirmed_at`
+    follow `confirmed_by` but not the other way round, so half-erasing either one would leave a row
+    that the register still reads as confirmed, which is the mistake the button exists to undo.
+  */
+  async confirm({ community_id, function_id, user_email, confirmed_by, confirm = true }) {
+    this.#id(user_email, 'user_email')
+    this.#id(confirmed_by, 'confirmed_by')
+    const one = await this.#one(community_id, function_id)
+
+    const found = await this.client
+      .from(PAID)
+      .select()
+      .eq('function_id', one.id)
+      .eq('user_email', user_email)
+      .maybeSingle()
+    if (found.error) throw found.error
+    if (!found.data) {
+      throw new Error(
+        'there is no payment recorded for that person under this function, so there is nothing to confirm',
+      )
+    }
+    if (confirm && found.data.paid !== true) {
+      throw new Error(
+        'that person has promised a date rather than paid, so there is no receipt to confirm yet',
+      )
+    }
+
+    const wrote = await this.client
+      .from(PAID)
+      .update(
+        confirm
+          ? { confirmed_by, confirmed_at: new Date().toISOString() }
+          : { confirmed_by: null, confirmed_at: null },
+      )
+      .eq('function_id', one.id)
+      .eq('user_email', user_email)
+      .select()
+      .maybeSingle()
+    if (wrote.error) throw wrote.error
+    return wrote.data
+  }
 }
 
 /*

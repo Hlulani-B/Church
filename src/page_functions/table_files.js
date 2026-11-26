@@ -637,4 +637,7 @@ export function downloadPdf(rows, options = {}) {
   return { name: save(bytes, fileName(options.title, options.dates, 'pdf'), PDF), count: wanted.length }
 }
 
-export { moment, pretty }
+// `drawn` goes out with the two formatters because the PDF writers in this app are not the only ones
+// that need it: the export set in export/pdf.js draws with the same standard fonts, and a character
+// outside cp1252 there corrupts the whole line exactly as it would here.
+export { drawn, moment, pretty }

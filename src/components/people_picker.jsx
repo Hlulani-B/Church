@@ -24,7 +24,7 @@ import React, { useState } from "react";
 
 const css = `
 .pw{position:relative;display:block;min-width:240px}
-.pw .pick{width:100%;font:inherit;font-size:16px;color:#111;background:#fff;border:1px solid #bdbdbd;border-radius:2px;padding:10px 12px;min-width:0}
+.pw .pick{width:100%;font:inherit;font-size:16px;font-weight:400;letter-spacing:normal;text-transform:none;color:#111;background:#fff;border:1px solid #bdbdbd;border-radius:2px;padding:10px 12px;min-width:0}
 .pw .pick:focus{outline:none;border-color:#111}
 .pw .pick:disabled{background:#f4f4f4;color:#888;cursor:default}
 .pw .chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}

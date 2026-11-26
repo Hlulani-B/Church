@@ -38,9 +38,10 @@ const LEADER_ACTIONS = {
   // The For-who box's two moves: read this community's people, and record one of them away.
   user: ['getUsers'],
   event: ['record_for'],
-  // The functions page: what this community has planned, the planning of one more, and one of
-  // them opened out with everybody who has answered it.
-  church_function: ['list', 'create', 'details'],
+  // The functions page: what this community has planned, the planning of one more, one of them
+  // opened out with everybody who has answered it, and a leader's signature on a receipt — or that
+  // signature taken back when it was put on the wrong row.
+  church_function: ['list', 'create', 'details', 'confirm'],
 }
 
 export default async function handler(req, res) {
@@ -398,6 +399,39 @@ export default async function handler(req, res) {
         function: 'details',
         community_id: params.community_id,
         function_id,
+      }
+    }
+    /*
+      Checking one person's receipt off, and undoing that check. The register is the only page that
+      asks, and of everything on the row only two columns move: whose signature it is and when it was
+      put there, and neither of them comes from the body. `confirmed_by` is the address off this
+      caller's token, so the row says who checked it because they were the one signed in, and
+      `confirmed_at` is stamped by the class. Which person is being checked does come from the body,
+      because a leader acts on other people's rows — the class still reads the function first and
+      refuses one that lives outside the community gated above, so a leader of one fellowship cannot
+      sign or unsign in another. `confirm: false` is the un-do, and the rest of the body is dropped
+      rather than passed on, so nothing else about the payment can ride in on this path.
+    */
+    if (action === 'church_function' && params.function === 'confirm') {
+      const function_id = String(params.function_id ?? '').trim()
+      if (!/^\d+$/.test(function_id)) {
+        return res
+          .status(400)
+          .json({ error: 'params.function_id is the number a planned function is addressed by' })
+      }
+      const user_email = String(params.user_email ?? '').trim()
+      if (!user_email) {
+        return res
+          .status(400)
+          .json({ error: 'params.user_email is required to say whose receipt is being checked' })
+      }
+      params = {
+        function: 'confirm',
+        community_id: params.community_id,
+        function_id,
+        user_email,
+        confirmed_by: email,
+        confirm: params.confirm !== false,
       }
     }
   }

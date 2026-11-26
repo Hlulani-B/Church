@@ -1,4 +1,5 @@
 import { CommunityMember } from '../src/functions/community_members.js'
+import { Community } from '../src/functions/community.js'
 import { ROLES } from '../src/functions/admin_dashboard.js'
 import { cors } from '../lib/cors.js'
 import {
@@ -40,6 +41,13 @@ const ADMIN_ACTIONS = {
   admin: ['changeCode', 'assign'],
   member: ['remove'],
   community: ['find'],
+  /*
+    The one irreversible thing a browser is allowed to ask for: every record inside this community,
+    and the files those records point at. The community row and its members stay — this is a clearing
+    of space, not a departure — and it answers to the creator of the community alone, not to every
+    admin, which is why the branch below is stricter than the role gate above.
+  */
+  purge: ['deleteAll'],
 }
 
 export default async function handler(req, res) {
@@ -143,6 +151,52 @@ export default async function handler(req, res) {
             .json({ error: 'that is the only admin, so the community would be left with nobody who can manage it' })
         }
       }
+    }
+    /*
+      Emptying a community. Four things have to be true before a single row is touched, and none of
+      them is the caller's word alone.
+
+      The community exists, so an id that was mistyped or already cleared cannot come back as a
+      success. The caller is an admin of it, which the role gate above already settled. The address
+      that signed in — read off the id token, never out of the body — is the one `community.created_by`
+      recorded when the fellowship was opened, which is what makes this the founder's decision rather
+      than any admin's. And the name has to be typed back exactly as the table holds it, so the
+      request carries proof that the person looking at this screen knows which fellowship they are
+      about to empty.
+
+      A community whose created_by was never written refuses and says why. Falling back to "any admin
+      will do" would be the moment this rule stopped protecting anybody, and the column can be filled
+      in once against the row.
+    */
+    if (action === 'purge' && params.function === 'deleteAll') {
+      const one = await new Community(god.url, god.key).find(params.community_id)
+      if (!one) {
+        return res.status(400).json({ error: 'there is no community with that id' })
+      }
+      const founder = String(one.created_by || '').trim().toLowerCase()
+      if (!founder) {
+        return res.status(403).json({
+          error:
+            'this community was opened before the app recorded who created it, so nobody can be shown to own emptying it — set created_by on its row first',
+        })
+      }
+      if (founder !== String(email).trim().toLowerCase()) {
+        // The address is not named back: whoever is refused here is by definition not the person it
+        // belongs to, and this app speaks about everybody else by name, never by email.
+        return res
+          .status(403)
+          .json({ error: 'only the person who opened this community can delete all its data' })
+      }
+      const typed = String(params.name || '').trim()
+      if (!typed) {
+        return res
+          .status(400)
+          .json({ error: 'params.name is required — type the community’s name to delete its data' })
+      }
+      if (typed.toLowerCase() !== String(one.name || '').trim().toLowerCase()) {
+        return res.status(400).json({ error: 'the name typed does not match the name of this community' })
+      }
+      params = { ...params, community_id: one.community_id, name: typed }
     }
   }
 

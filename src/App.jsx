@@ -21,6 +21,8 @@ import ServingsPage from './pages/servings.jsx'
 import FunctionsPage from './pages/functions.jsx'
 import AvailableFunctionsPage from './pages/available_functions.jsx'
 import RsvpPage from './pages/rsvp.jsx'
+import DeleteCommunitySignInPage from './pages/delete_community.jsx'
+import DeleteCommunityConfirmPage from './pages/delete_community_confirm.jsx'
 import ToastHost from './components/toast.jsx'
 
 function NotFound() {
@@ -58,6 +60,11 @@ function App() {
         <Route path="/functions" element={<FunctionsPage />} />
         <Route path="/available-functions" element={<AvailableFunctionsPage />} />
         <Route path="/rsvp" element={<RsvpPage />} />
+        {/* Two screens, one decision: sign in again, then type the name back. The sign-in page owns
+            the first half because a delete this large is not asked of a session somebody happened to
+            leave open, and both are gated again on the server. */}
+        <Route path="/delete-community" element={<DeleteCommunitySignInPage />} />
+        <Route path="/delete-community/confirm" element={<DeleteCommunityConfirmPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       {/* One host, mounted above the router so a check-in landing on any page can push a toast

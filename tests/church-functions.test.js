@@ -541,3 +541,144 @@ describe('ChurchFunctions.respond — the member\'s own two writes', () => {
     expect(mock.callsFor('function_paid')).toHaveLength(0)
   })
 })
+
+/*
+  A leader's signature on the same money row a member cannot sign. Three rules are worth locking, and
+  all three are the kind that break silently on a register: a confirmation writes the name and the
+  moment together, because `isConfirmed` on the page asks for both and a row holding one would sit in
+  neither section; taking a signature back clears both, because erasing only the name would leave a
+  receipt still reading as paid-and-confirmed, which is precisely the mistake the button exists to
+  undo; and a promise is not a payment, so there is nothing to check off on a date somebody gave.
+
+  The mock answers a `.maybeSingle()` read with the first row of the table, so each mock here holds
+  exactly the function and the one money row the call is meant to find.
+*/
+describe('ChurchFunctions.confirm — a leader\'s signature, and taking it back', () => {
+  const congress = { id: 7, community_id: 'c1', requires_payment: true, name: 'Congress' }
+
+  const receipt = (over = {}) =>
+    makeSupabaseMock({
+      functions: [congress],
+      function_paid: [
+        {
+          function_id: 7,
+          user_email: 'a@x',
+          paid: true,
+          proof_path: 'functions/a@x/7/receipt.png',
+          confirmed_by: null,
+          confirmed_at: null,
+          ...over,
+        },
+      ],
+      singleAsRow: true,
+    })
+
+  const signed = (mock) => mock.callsFor('function_paid').find((one) => one.update)
+
+  it('stamps the confirmer and the moment together', async () => {
+    const mock = receipt()
+    const planned = await churchFunctionWith(mock)
+    await planned.confirm({
+      community_id: 'c1',
+      function_id: 7,
+      user_email: 'a@x',
+      confirmed_by: 'leader@x',
+    })
+
+    expect(signed(mock).update).toMatchObject({ confirmed_by: 'leader@x' })
+    expect(Date.parse(signed(mock).update.confirmed_at)).not.toBeNaN()
+    // The pair the row is addressed by, so a leader checking one person cannot write over another's.
+    expect(signed(mock).filters).toContainEqual({ kind: 'eq', col: 'function_id', val: 7 })
+    expect(signed(mock).filters).toContainEqual({ kind: 'eq', col: 'user_email', val: 'a@x' })
+  })
+
+  it('clears both columns on an un-confirm, so the row goes back to waiting', async () => {
+    const mock = receipt({ confirmed_by: 'leader@x', confirmed_at: '2027-02-12T18:30:00Z' })
+    const planned = await churchFunctionWith(mock)
+    await planned.confirm({
+      community_id: 'c1',
+      function_id: 7,
+      user_email: 'a@x',
+      confirmed_by: 'leader@x',
+      confirm: false,
+    })
+
+    expect(signed(mock).update).toEqual({ confirmed_by: null, confirmed_at: null })
+  })
+
+  it('refuses to sign a promise, because no money is in yet', async () => {
+    const mock = receipt({ paid: false, proof_path: null, expected_pay_date: '2027-02-20' })
+    const planned = await churchFunctionWith(mock)
+
+    await expect(
+      planned.confirm({
+        community_id: 'c1',
+        function_id: 7,
+        user_email: 'a@x',
+        confirmed_by: 'leader@x',
+      }),
+    ).rejects.toThrow(/promised a date rather than paid/)
+    expect(signed(mock)).toBeUndefined()
+  })
+
+  /*
+    Taking a signature back is allowed whatever the row says, since the mistake being undone may well
+    be a confirmation put on a row that should never have had one.
+  */
+  it('will un-sign a row it would refuse to sign', async () => {
+    const mock = receipt({ paid: false, confirmed_by: 'leader@x', confirmed_at: '2027-02-12T18:30:00Z' })
+    const planned = await churchFunctionWith(mock)
+    const back = await planned.confirm({
+      community_id: 'c1',
+      function_id: 7,
+      user_email: 'a@x',
+      confirmed_by: 'leader@x',
+      confirm: false,
+    })
+
+    expect(back).toEqual({ confirmed_by: null, confirmed_at: null })
+  })
+
+  it('refuses a person with no payment row, and writes nothing', async () => {
+    const mock = makeSupabaseMock({ functions: [congress], function_paid: [], singleAsRow: true })
+    const planned = await churchFunctionWith(mock)
+
+    await expect(
+      planned.confirm({
+        community_id: 'c1',
+        function_id: 7,
+        user_email: 'a@x',
+        confirmed_by: 'leader@x',
+      }),
+    ).rejects.toThrow(/no payment recorded/)
+    expect(signed(mock)).toBeUndefined()
+  })
+
+  it('refuses a function of another community before touching the money row', async () => {
+    const mock = receipt()
+    const planned = await churchFunctionWith(mock)
+
+    await expect(
+      planned.confirm({
+        community_id: 'c2',
+        function_id: 7,
+        user_email: 'a@x',
+        confirmed_by: 'leader@x',
+      }),
+    ).rejects.toThrow(/another community/)
+    expect(mock.callsFor('function_paid')).toHaveLength(0)
+  })
+
+  it('refuses to sign as nobody, and for nobody', async () => {
+    const mock = receipt()
+    const planned = await churchFunctionWith(mock)
+
+    await expect(
+      planned.confirm({ community_id: 'c1', function_id: 7, user_email: 'a@x' }),
+    ).rejects.toThrow(/confirmed_by is required/)
+    await expect(
+      planned.confirm({ community_id: 'c1', function_id: 7, confirmed_by: 'leader@x' }),
+    ).rejects.toThrow(/user_email is required/)
+    expect(mock.calls).toHaveLength(0)
+  })
+})

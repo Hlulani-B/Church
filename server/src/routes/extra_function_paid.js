@@ -70,9 +70,17 @@ router.post('/', async (req, res) => {
 })
 
 /*
-  Every extra member's payment for one function. The person comes joined off extra_members and the
-  confirmer off users, so a list names people by name and surname rather than by an address — and
-  a proof path comes back too, for whoever is looking at it.
+  Every extra member's payment for one function, named: the person comes joined off extra_members,
+  which does carry the key, and the confirmer is read separately, which is the half that cannot be
+  joined.
+
+  Nothing in the schema ties `confirmed_by` to users(email) — the table was built without that
+  foreign key — so an embedded `users!extra_function_paid_confirmed_by_fkey(...)` does not merely
+  come back empty, it fails the whole read with "Could not find a relationship between
+  'extra_function_paid' and 'users' in the schema cache", and the section shows nothing at all. The
+  addresses on the rows are therefore gathered and asked for in one `in` read, the way the leader's
+  function register names its people, and every row is handed back the same confirmed shape the
+  page already reads. An address with no user row keeps the address, rather than losing its name.
 */
 router.get('/', async (req, res) => {
   const { function_id } = req.query
@@ -83,7 +91,7 @@ router.get('/', async (req, res) => {
   const { data, error } = await supabase
     .from('extra_function_paid')
     .select(
-      'function_id, member_id, paid, expected_pay_date, proof_path, proof_submitted_at, confirmed_by, confirmed_at, created_at, updated_at, extra_members(name, surname), confirmed:users!extra_function_paid_confirmed_by_fkey(name, surname)',
+      'function_id, member_id, paid, expected_pay_date, proof_path, proof_submitted_at, confirmed_by, confirmed_at, created_at, updated_at, extra_members(name, surname)',
     )
     .eq('function_id', Number(String(function_id).trim()))
     .order('created_at')
@@ -91,7 +99,32 @@ router.get('/', async (req, res) => {
     res.status(500).json({ error: 'read_failed', message: error.message })
     return
   }
-  res.json(data || [])
+
+  const rows = data || []
+  const checked = [...new Set(rows.map((one) => one.confirmed_by).filter(Boolean))]
+  if (!checked.length) {
+    res.json(rows.map((one) => ({ ...one, confirmed: null })))
+    return
+  }
+
+  const { data: people, error: peopleError } = await supabase
+    .from('users')
+    .select('email, name, surname')
+    .in('email', checked)
+  if (peopleError) {
+    res.status(500).json({ error: 'read_failed', message: peopleError.message })
+    return
+  }
+
+  // Lower-cased on both sides: confirm() stores the address in that shape, and a users row written
+  // by hand need not have been.
+  const called = new Map((people || []).map((one) => [String(one.email).toLowerCase(), one]))
+  res.json(
+    rows.map((one) => ({
+      ...one,
+      confirmed: (one.confirmed_by && called.get(String(one.confirmed_by).toLowerCase())) || null,
+    })),
+  )
 })
 
 /*

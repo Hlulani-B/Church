@@ -5,6 +5,7 @@ import { ChurchFunctionsFetch } from "../page_functions/church_functions.js";
 import CreateFunction from "../components/create_function.jsx";
 import ViewFunctions, { pretty } from "../components/view_functions.jsx";
 import IndividualFunction from "../components/individual_function.jsx";
+import DownloadAllFunctions from "../components/download_all_functions.jsx";
 import Menu from "../components/menu.jsx";
 import BackToCommunities, { BackToDashboard } from "../components/back.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
@@ -43,6 +44,10 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au .links{display:flex;flex-wrap:wrap;gap:10px;margin:32px 0 0}
 .au .links button{background:#111;color:#fff;border:1px solid #111;border-radius:2px;padding:12px 22px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
 .au .links button:hover{background:#333;border-color:#333}
+
+/* beside planning rather than inside it: an archive is not a thing you do as often as you plan, and
+   it should not read as the same kind of button. Own class, so .links' black cannot reach it. */
+.au .exports{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 0}
 
 @media (max-width:860px){
   .au .bar{padding:14px 20px}
@@ -164,6 +169,14 @@ export default function FunctionsPage() {
                 <button type="button" onClick={() => setPopup(true)}>
                   Create function
                 </button>
+              </div>
+            )}
+
+            {/* Saving the register before anything is cleared from it. The archive is the whole
+                community's functions as one zip, so it belongs on the list rather than on a row. */}
+            {communityId && (
+              <div className="exports">
+                <DownloadAllFunctions community_id={communityId} />
               </div>
             )}
 

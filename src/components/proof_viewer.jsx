@@ -25,6 +25,10 @@ import { createPortal } from "react-dom";
   opens a tab instead of a dialog — so a link named as a download would still be a link. The bucket
   answers `access-control-allow-origin: *`, which is what makes reading the bytes here possible at all.
 
+  A testimony attached as a file or a picture opens here too, under its own title rather than the word
+  for a receipt: an attachment is drawn at the size of the screen wherever it is named, not left small
+  inside a card or handed to a tab the reader has to find their way back from.
+
   One dialog, closed by Escape, by the backdrop or by its own button, and the control that opened it
   takes the focus back on the way out — a leader working down the register by keyboard does not lose
   their place. It is rendered into the document body, so a table cell that scrolls cannot clip it, and
@@ -42,8 +46,17 @@ body.pv_open{overflow:hidden}
 .pv .file:hover{background:#111;color:#fff}
 .pv .file .who{font-weight:400;font-size:12px;opacity:.75;max-width:28ch;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 
-.pv .sheet{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(17,17,17,.86);font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
-.pv .box{--bar:49px;display:flex;flex-direction:column;overflow:hidden;background:#fff;color:#111;border-radius:2px;max-width:min(1040px,96vw);max-height:94vh}
+/*
+  The dialog is a portal on document.body — it carries pv on itself rather than sitting inside the
+  cell that opened it, so its own rules read .pv.sheet. Written the other way, as a descendant, they
+  would never match a thing that has left the table: the file would be drawn at the end of the
+  document, in a corner of the page, and the maximise button would have nothing to act on.
+
+  It is fixed to the whole viewport with a wide padding round the card, so the file is held in the
+  middle of the screen with room on every side of it rather than pushed into an edge.
+*/
+.pv.sheet{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:clamp(20px,5vh,72px) clamp(16px,5vw,72px);background:rgba(17,17,17,.86);font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
+.pv .box{--bar:49px;display:flex;flex-direction:column;overflow:hidden;background:#fff;color:#111;border-radius:2px;width:min(1040px,100%);max-height:100%}
 .pv .head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #e3e3e3;font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;color:#666}
 .pv .head .t{min-width:0;overflow-wrap:anywhere}
 .pv .head .spacer{flex:1 1 auto;min-width:8px}
@@ -53,24 +66,30 @@ body.pv_open{overflow:hidden}
 .pv .head button:disabled{border-color:#bdbdbd;color:#bdbdbd;cursor:progress}
 .pv .warn{margin:0;padding:10px 14px;background:#fdecea;color:#a11111;border-bottom:1px solid #e3e3e3;font-size:13px;letter-spacing:0;text-transform:none;font-weight:400}
 
-.pv .body{display:flex;align-items:center;justify-content:center;min-height:0;padding:14px;background:#111}
+.pv .body{flex:1 1 auto;display:flex;align-items:center;justify-content:center;min-height:0;padding:14px;background:#111}
 .pv .plate{border:0;background:none;padding:0;line-height:0;cursor:zoom-in;display:flex}
 .pv .plate img{display:block;max-width:100%;max-height:calc(94vh - var(--bar) - 28px);object-fit:contain}
 .pv .plate:where(:focus-visible){outline:2px solid #fff;outline-offset:3px}
-.pv .body iframe{display:block;width:min(880px,92vw);height:calc(94vh - var(--bar) - 28px);border:0;background:#fff}
+.pv .body iframe{display:block;width:min(880px,100%);height:calc(94vh - var(--bar) - 28px);border:0;background:#fff}
 .pv .body .other{margin:0;padding:24px 0;max-width:60ch;color:#fff;font-size:15px;text-align:center;letter-spacing:0;text-transform:none;font-weight:400}
 
-/* Maximised: the whole screen, no frame around the file, and the same controls still on top of it. */
-.pv .sheet.max{padding:0}
-.pv .sheet.max .box{max-width:none;max-height:none;width:100vw;height:100vh;border-radius:0}
-.pv .sheet.max .body{padding:0}
-.pv .sheet.max .plate{cursor:zoom-out}
-.pv .sheet.max .plate img{max-width:100vw;max-height:calc(100vh - var(--bar))}
-.pv .sheet.max .body iframe{width:100%;height:calc(100vh - var(--bar))}
+/*
+  Maximised: the whole screen, no frame around the file, and the same controls still on top of it.
+  And the file is drawn at the size of the space rather than the size it came in — a receipt
+  photographed on a phone is smaller than a screen, and a maximise that only moves a picture about
+  half the height it was given has not maximised anything. So it fills the height it is handed, and
+  keeps its shape while doing it.
+*/
+.pv.sheet.max{padding:0}
+.pv.sheet.max .box{width:100%;max-width:none;height:100%;max-height:none;border-radius:0}
+.pv.sheet.max .body{padding:0}
+.pv.sheet.max .plate{width:100%;height:100%;align-items:center;justify-content:center;cursor:zoom-out}
+.pv.sheet.max .plate img{width:100%;height:100%;max-width:100vw;max-height:calc(100vh - var(--bar));object-fit:contain}
+.pv.sheet.max .body iframe{width:100%;height:calc(100vh - var(--bar))}
 
 @media (max-width:640px){
-  .pv .sheet{padding:0}
-  .pv .box{width:100vw;max-width:100vw;height:100vh;max-height:100vh;border-radius:0}
+  .pv.sheet{padding:0}
+  .pv .box{width:100%;max-width:100%;height:100%;max-height:100%;border-radius:0}
   .pv .head{flex-wrap:wrap;gap:8px}
   .pv .head .spacer{flex-basis:100%;min-width:0;height:0}
   .pv .plate img{max-height:calc(100vh - var(--bar) - 24px)}
@@ -96,7 +115,7 @@ function nameOf(url) {
   return last ? decodeURIComponent(last) : "receipt";
 }
 
-export default function ProofViewer({ url, label = "" }) {
+export default function ProofViewer({ url, label = "", title = "Receipt" }) {
   const [open, setOpen] = useState(false);
   const [max, setMax] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -125,7 +144,7 @@ export default function ProofViewer({ url, label = "" }) {
   if (!url) return <span className="pv free">No proof attached</span>;
 
   const kind = kindOf(url);
-  const words = { image: "Receipt image", pdf: "Receipt (PDF)", other: "Attached file" }[kind];
+  const words = { image: `${title} image`, pdf: `${title} (PDF)`, other: "Attached file" }[kind];
   const who = label && label !== url ? label : "";
   const caption = `${words}${who ? ` — ${who}` : ""}`;
 

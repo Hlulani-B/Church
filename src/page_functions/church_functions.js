@@ -102,4 +102,25 @@ export class ChurchFunctionsFetch {
       expected_pay_date,
     })
   }
+
+  /*
+    A leader checking one person's receipt off, and the same call with `confirm: false` to take the
+    signature back after a mistake. Two things are deliberately absent from what is sent: who signed
+    it, and when. /api/leader writes the address off this caller's token and the class stamps the
+    moment, so a page cannot confirm a payment in another leader's name or plant a date under it.
+    The address that is sent names the *other* person, which is what makes this a leader's call — a
+    member answering for their own money goes through `saveRsvp`, and that path cannot sign.
+  */
+  async confirmPayment({ community_id, function_id, user_email, confirm = true }) {
+    if (!community_id) throw new Error('community_id is required')
+    if (!function_id) throw new Error('function_id is required')
+    if (!user_email) throw new Error('user_email is required')
+    return callGod('church_function', {
+      function: 'confirm',
+      community_id,
+      function_id,
+      user_email,
+      confirm,
+    })
+  }
 }

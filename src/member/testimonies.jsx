@@ -7,6 +7,8 @@ import Menu from "../components/menu.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
 import BackToCommunities from "../components/back.jsx";
 import ExtraTestimonies from "../components/extra_testimonies.jsx";
+import DownloadTestimonies from "../components/download_testimonies.jsx";
+import ProofViewer from "../components/proof_viewer.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
 const accounts = new Auth();
@@ -44,6 +46,12 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au .item{border:1px solid var(--line);border-radius:2px;padding:20px 22px;margin:0 0 12px;background:#fff}
 .au .item .when{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
 .au .item .body{margin:8px 0 0;font-size:16px;line-height:1.7;color:#222}
+
+/* Which of these the reader shared. No other card on this screen says whose it is — the names come off
+   the roster, which a member is not handed — but the one that is theirs is the one with the two
+   buttons under it, so the page says so rather than leaving that to be guessed. The reader's own name
+   is kept as it is spelled, which is why the casing of the line it sits in is switched back off. */
+.au .item .when .you{display:inline-block;margin-left:8px;padding:2px 9px;border:1px solid var(--line);border-radius:999px;background:#f4f4f4;color:#111;font-size:11px;letter-spacing:normal;text-transform:none;font-weight:600}
 
 .au .row{display:flex;gap:10px;margin:28px 0 0}
 .au .ghost{background:#fff;color:#111;border:1px solid #bdbdbd;border-radius:2px;padding:11px 20px;font-size:15px;font-family:inherit;cursor:pointer}
@@ -102,7 +110,6 @@ function TestimonyBody({ value }) {
 
   const encrypted = typeof value === "string" && value.startsWith("enc:v1:");
   const isUrl = typeof value === "string" && /^https?:\/\//i.test(value);
-  const ext = isUrl ? value.split("?")[0].split(".").pop().toLowerCase() : "";
 
   useEffect(() => {
     if (!encrypted) return undefined;
@@ -115,22 +122,12 @@ function TestimonyBody({ value }) {
     };
   }, [value, encrypted]);
 
-  if (isUrl) {
-    if (["png", "jpg", "jpeg", "webp", "gif", "avif"].includes(ext)) {
-      return <img src={value} alt="Testimony image" style={{ maxWidth: "100%", height: "auto" }} />;
-    }
-    const label =
-      ext === "pdf"
-        ? "Open the PDF testimony"
-        : ext === "docx"
-          ? "Download the document"
-          : "Open the attached file";
-    return (
-      <a href={value} target="_blank" rel="noreferrer">
-        {label}
-      </a>
-    );
-  }
+  /*
+    A file is opened the way a payment receipt is, on this screen and at the size of the screen: an
+    image drawn small in the card cannot be read, and a link that leaves for a new tab loses the list
+    the reader came from. The viewer draws it, maximises it and saves it without that detour.
+  */
+  if (isUrl) return <ProofViewer url={value} title="Testimony" />;
 
   if (encrypted) {
     if (failed) return <span>{failed}</span>;
@@ -160,6 +157,18 @@ export default function MemberTestimonies() {
   const [saving, setSaving] = useState(false);
   const [draftError, setDraftError] = useState("");
   const [refresh, setRefresh] = useState(0);
+  /*
+    The reader list of the viewer's own testimonies, and the delete of one of them. A member has no
+    people box to pick from, because the roster is a leader's read — so the addresses stay typed
+    here, and the page function is what refuses a delete of a row that is not the viewer's own.
+  */
+  const [editing, setEditing] = useState(null);
+  const [editDraft, setEditDraft] = useState({ allow_all: true, authorise: "" });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [note, setNote] = useState("");
+  const [confirming, setConfirming] = useState("");
+  const [removing, setRemoving] = useState("");
 
   const admin = adminState({ email: signedIn?.email }, route);
   const communityId = admin.community_id;
@@ -203,6 +212,70 @@ export default function MemberTestimonies() {
   function closeAdd() {
     if (saving) return;
     setAdding(false);
+  }
+
+  // Opening "update who can see" on the viewer's own testimony.
+  function openEdit(one) {
+    setEditDraft({
+      allow_all: one.allow_all !== false,
+      authorise: (Array.isArray(one.authorise) ? one.authorise : []).join(", "),
+    });
+    setEditError("");
+    setEditing(one);
+  }
+
+  function closeEdit() {
+    if (editSaving) return;
+    setEditing(null);
+  }
+
+  async function saveAuthorise(event) {
+    event.preventDefault();
+    setEditSaving(true);
+    setEditError("");
+    try {
+      const authorise = String(editDraft.authorise || "")
+        .split(",")
+        .map((addr) => addr.trim())
+        .filter(Boolean);
+      await testimonies.updateAuthorise({
+        testimony_id: editing.testimony_id,
+        allow_all: editDraft.allow_all,
+        authorise: editDraft.allow_all ? [] : authorise,
+      });
+      setEditing(null);
+      setNote("Who may read that testimony is updated.");
+      setRefresh((count) => count + 1);
+    } catch (e) {
+      setEditError(e.message);
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  /*
+    Deleting one's own testimony. deleteTestimony reads the row back, opens the address it was
+    written against and refuses a match that is not the signed-in one, so this button is only
+    printed where it is allowed anyway. The first click asks, because the words are gone after it.
+  */
+  async function remove(one) {
+    if (confirming !== one.testimony_id) {
+      setConfirming(one.testimony_id);
+      return;
+    }
+    setRemoving(one.testimony_id);
+    setError("");
+    try {
+      await testimonies.deleteTestimony({ testimony_id: one.testimony_id, email });
+      setConfirming("");
+      setNote("Your testimony is deleted.");
+      setRefresh((count) => count + 1);
+    } catch (e) {
+      setConfirming("");
+      setError(e.message);
+    } finally {
+      setRemoving("");
+    }
   }
 
   /*
@@ -250,6 +323,16 @@ export default function MemberTestimonies() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [adding, saving]);
+
+  // The same way out for the reader list.
+  useEffect(() => {
+    if (!editing) return undefined;
+    function onKey(event) {
+      if (event.key === "Escape" && !editSaving) setEditing(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editing, editSaving]);
 
   const page = fetched?.community_id === communityId ? fetched : null;
   const first = page && page.shown ? page.from + 1 : 0;
@@ -312,9 +395,18 @@ export default function MemberTestimonies() {
               <button className="add" type="button" onClick={openAdd}>
                 Add a testimony
               </button>
+              {/* What this address is allowed to read, opened and pasted into one file. A member's
+                  archive is their own view of the fellowship's sharings, not the whole table. */}
+              <DownloadTestimonies
+                community_id={communityId}
+                community_name={admin.name}
+                viewer_email={email}
+                label="Archive what I can read"
+              />
             </div>
 
             {error && <div className="note bad">{error}</div>}
+            {note && !error && <div className="note">{note}</div>}
             {!error && !page && <LoadingBoxes count={4} words="Reading what this community has shared…" />}
 
             {page && !error && (
@@ -325,12 +417,58 @@ export default function MemberTestimonies() {
                     : "Nothing has been shared here yet."}
                 </p>
 
-                {page.testimonies.map((one) => (
-                  <article className="item" key={one.testimony_id}>
-                    <p className="when">{pretty(one.date)}</p>
-                    <p className="body"><TestimonyBody value={one.body} /></p>
-                  </article>
-                ))}
+                {page.testimonies.map((one) => {
+                  /*
+                    A member's card carries no author — the names come off the roster, which is not
+                    this screen's to read — but the viewer's own sharing is still their own to narrow
+                    and to take down, so the two buttons appear on those cards alone. The same test
+                    marks the card first, so the buttons under it read as theirs rather than as a
+                    mistake on somebody else's row.
+                  */
+                  const mine = String(one.email || "").toLowerCase() === email.toLowerCase();
+                  return (
+                    <article className="item" key={one.testimony_id}>
+                      <p className="when">
+                        {pretty(one.date)}
+                        {mine ? (
+                          <span className="you">{memberName ? `${memberName} — it's me` : "it's me"}</span>
+                        ) : null}
+                      </p>
+                      <p className="body"><TestimonyBody value={one.body} /></p>
+                      {mine ? (
+                        <div className="row">
+                          <button className="ghost" type="button" onClick={() => openEdit(one)}>
+                            Update who can see
+                          </button>
+                          {confirming !== one.testimony_id ? (
+                            <button className="ghost" type="button" onClick={() => remove(one)}>
+                              Delete testimony
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                className="ghost"
+                                type="button"
+                                disabled={removing === one.testimony_id}
+                                onClick={() => remove(one)}
+                              >
+                                {removing === one.testimony_id ? "Deleting…" : "Yes, delete it"}
+                              </button>
+                              <button
+                                className="ghost"
+                                type="button"
+                                disabled={removing === one.testimony_id}
+                                onClick={() => setConfirming("")}
+                              >
+                                Keep it
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
 
                 {page.total > page.shown || page.from > 0 ? (
                   <div className="row">
@@ -459,6 +597,62 @@ export default function MemberTestimonies() {
               </button>
               <button className="go" type="submit" disabled={saving}>
                 {saving ? "Saving…" : "Save testimony"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {editing && (
+        <div
+          className="veil"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Update who can read"
+          onClick={closeEdit}
+        >
+          <form className="pop" onSubmit={saveAuthorise} onClick={(event) => event.stopPropagation()}>
+            <h2 className="serif">Update who can read</h2>
+            <p className="who">The testimony from {pretty(editing.date)}.</p>
+
+            <label>
+              Allow everybody to read this?
+              <select
+                value={editDraft.allow_all ? "yes" : "no"}
+                onChange={(event) =>
+                  setEditDraft({ ...editDraft, allow_all: event.target.value === "yes" })
+                }
+              >
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+
+            {/*
+              Typed rather than picked: the community's people come off the roster, and the roster is
+              a leader's read, so this screen has no list of names to search. An address is written
+              out of the viewer's own memory and stored on the row exactly as it is here.
+            */}
+            {!editDraft.allow_all && (
+              <label>
+                Authorised emails (comma-separated)
+                <input
+                  type="text"
+                  value={editDraft.authorise}
+                  placeholder="someone@example.com, another@example.com"
+                  onChange={(event) => setEditDraft({ ...editDraft, authorise: event.target.value })}
+                />
+              </label>
+            )}
+
+            {editError && <p className="fail">{editError}</p>}
+
+            <div className="row">
+              <button className="ghost" type="button" onClick={closeEdit} disabled={editSaving}>
+                Cancel
+              </button>
+              <button className="go" type="submit" disabled={editSaving}>
+                {editSaving ? "Saving…" : "Save readers"}
               </button>
             </div>
           </form>

@@ -370,12 +370,18 @@ export default async function handler(req, res) {
       }
       params = { ...params, changes }
     }
+    /*
+      The address that opened a community is recorded with it, and it is taken from the id token and
+      not from the body: the one person who could otherwise name themselves the owner of somebody
+      else's fellowship is the person this later protects against, when they ask for everything in it
+      to be deleted.
+    */
     if (action === 'community' && params.function === 'create') {
       const name = String(params.name || '').trim()
       if (!name) {
         return res.status(400).json({ error: 'params.name is required to open a community' })
       }
-      params = { ...params, name }
+      params = { ...params, name, created_by: email }
     }
     /*
       Making yourself a member with role admin is only safe while the community has no

@@ -103,9 +103,9 @@ function shape({ testimony_id, user_email, date, body, authorise, allow_all }, k
   ciphertext, so reading cannot answer a roster, a search or a permission check on it until it is
   decrypted — which decryptText does here, once per row, and passes through untouched any address
   written before the encryption existed. The body is not opened here: the pages render it through
-  their own TestimonyBody, which decrypts the words and shows a file link for the types that are
-  one — so the stored row stays ciphertext all the way down to Supabase, and only this screen's
-  copy of it is in plain words.
+  their own TestimonyBody, which decrypts the words and hands a file to the same viewer a payment
+  receipt gets — so the stored row stays ciphertext all the way down to Supabase, and only this
+  screen's copy of it is in plain words.
 */
 async function openRows(rows, known, viewer_email) {
   const opened = await Promise.all(
@@ -362,6 +362,45 @@ export class TestimoniesFetch {
       throw new Error('That testimony could not be found, so its readers were not changed.')
     }
     return updated
+  }
+
+  /*
+    Removing a testimony, and the rule that goes with it: only the person who shared one may take
+    it down. An admin and a leader read the whole community's list and may change who may read a
+    row, but the sharing itself belongs to the one who witnessed it, so nobody else may delete it.
+
+    The check is made here rather than left to the button on the card, so a page cannot get it
+    wrong, and it cannot live on the server: `user_email` is stored as ciphertext, the key never
+    leaves this browser, and AES-GCM writes a fresh iv every time — so the stored address cannot be
+    recognised by encrypting the typed one and comparing the two. The row is therefore read back,
+    its address opened, and only a match is sent on to DELETE /testimony/:id.
+  */
+  async deleteTestimony({ testimony_id, email }) {
+    if (!testimony_id) throw new Error('testimony_id is required')
+    if (!email) {
+      throw new Error('Nobody is signed in, so there is nothing to delete.')
+    }
+
+    const { data, error } = await this.client
+      .from('testimony')
+      .select('testimony_id, user_email')
+      .eq('testimony_id', testimony_id)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    if (!data) {
+      throw new Error('That testimony is not on the list any more, so there is nothing to delete.')
+    }
+
+    const author = await decryptText(data.user_email)
+    if (String(author).trim().toLowerCase() !== String(email).trim().toLowerCase()) {
+      throw new Error('Only the person who shared this testimony can delete it.')
+    }
+
+    const done = await requestJson(`/testimony/${testimony_id}`, { method: 'DELETE' })
+    if (!done?.removed) {
+      throw new Error('The deletion was not confirmed, so the testimony may still be there.')
+    }
+    return done
   }
 
   /*

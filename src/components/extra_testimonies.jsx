@@ -3,6 +3,7 @@ import extra from "../page_functions/extra.js";
 import { UserFetch } from "../page_functions/user.js";
 import { decryptText } from "../page_functions/crypto.js";
 import PeoplePicker, { mapUsers, mapExtraMembers } from "./people_picker.jsx";
+import ProofViewer from "./proof_viewer.jsx";
 import Pager, { usePager, PER_PAGE } from "./pager.jsx";
 
 /*
@@ -105,7 +106,6 @@ function Body({ value }) {
   const [failed, setFailed] = useState("");
   const encrypted = typeof value === "string" && value.startsWith("enc:v1:");
   const isUrl = typeof value === "string" && /^https?:\/\//i.test(value);
-  const ext = isUrl ? value.split("?")[0].split(".").pop().toLowerCase() : "";
 
   useEffect(() => {
     if (!encrypted) return undefined;
@@ -116,13 +116,8 @@ function Body({ value }) {
     return () => { live = false; };
   }, [value, encrypted]);
 
-  if (isUrl) {
-    if (["png", "jpg", "jpeg", "webp", "gif", "avif"].includes(ext)) {
-      return <img src={value} alt="Testimony image" style={{ maxWidth: "100%", height: "auto" }} />;
-    }
-    const label = ext === "pdf" ? "Open the PDF testimony" : ext === "docx" ? "Download the document" : "Open the attached file";
-    return <a href={value} target="_blank" rel="noreferrer">{label}</a>;
-  }
+  // Opened like every other attachment: on this screen, at the size of the screen.
+  if (isUrl) return <ProofViewer url={value} title="Testimony" />;
   if (encrypted) {
     if (failed) return <span>{failed}</span>;
     if (text === null) return <span>Opening…</span>;

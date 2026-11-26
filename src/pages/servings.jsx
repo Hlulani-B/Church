@@ -6,6 +6,7 @@ import Menu from "../components/menu.jsx";
 import LoadingBoxes from "../components/loading_boxes.jsx";
 import Pager, { usePager, PER_PAGE } from "../components/pager.jsx";
 import ExtraServings from "../components/extra_servings.jsx";
+import DownloadServingsData from "../components/download_servings_data.jsx";
 import BackToCommunities, { BackToDashboard } from "../components/back.jsx";
 import { adminState, rememberAdmin } from "../admin/state.js";
 
@@ -36,6 +37,9 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au .note.bad{border-left-color:#a11111}
 
 .au h3{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:40px 0 16px;font-weight:600}
+
+/* where the archive button sits: under the heading it belongs to, above the rows it saves */
+.au .tools{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 4px}
 .au .tablewrap{border:1px solid var(--line);border-radius:2px;overflow-x:auto;margin-top:14px}
 .au table{width:100%;border-collapse:collapse;font-size:15px}
 .au th{text-align:left;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:12px 16px;background:#fafafa;border-bottom:1px solid var(--line)}
@@ -263,6 +267,9 @@ export default function ServingsPage() {
         ) : (
           <section>
             <h3>Servings</h3>
+            <div className="tools">
+              <DownloadServingsData community_id={communityId} community_name={admin.name} />
+            </div>
             {rows === null ? (
               <LoadingBoxes words="Reading this community's servings…" />
             ) : rows.length ? (

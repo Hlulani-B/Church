@@ -24,6 +24,10 @@ const TIER = {
   // 'getUsers' names the community's people, which is a leader's read; the caller's own row stays self.
   user: (fn) => (fn === 'getUsers' ? 'leader' : 'self'),
   community: (fn) => (fn === 'find' ? 'admin' : 'self'),
+  // Emptying a community of its record, the community itself left standing. Admin tier, and inside it
+  // the stricter question the endpoint asks: whether the signed-in address is the one that opened the
+  // community.
+  purge: 'admin',
   member: (fn) => (fn === 'remove' ? 'admin' : 'self'),
   admin: (fn) => (fn === 'roster' ? 'leader' : fn === 'hosts' ? 'self' : 'admin'),
   attendance: 'leader',
@@ -33,9 +37,10 @@ const TIER = {
   feedback: 'self',
   // The functions page belongs to whoever runs the fellowship, admin or leader. A member's own three
   // moves — what is still to come, what one function says about me, and my answer to it — belong to
-  // the caller rather than to the fellowship, so they go to /api/self.
+  // the caller rather than to the fellowship, so they go to /api/self. Checking a receipt off, and
+  // taking the signature back, are the leader's half: they name another person's row.
   church_function: (fn) =>
-    fn === 'list' || fn === 'create' || fn === 'details' ? 'leader' : 'self',
+    fn === 'list' || fn === 'create' || fn === 'details' || fn === 'confirm' ? 'leader' : 'self',
 }
 const PATH = { self: '/api/self', leader: '/api/leader', admin: '/api/admin' }
 

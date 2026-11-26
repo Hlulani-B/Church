@@ -6,6 +6,7 @@ import ProofViewer from "./proof_viewer.jsx";
 import ExtraFunctionAttending from "./extra_function_attending.jsx";
 import ExtraFunctionPaid from "./extra_function_paid.jsx";
 import LoadingBoxes from "./loading_boxes.jsx";
+import DownloadFunctionData from "./download_function_data.jsx";
 import Pager, { usePager, PER_PAGE } from "./pager.jsx";
 import { named, pretty } from "./view_functions.jsx";
 
@@ -61,6 +62,11 @@ const css = `
 .fn .facts .free{color:#666}
 
 .fn .ask{margin:34px 0 0}
+
+/* The archive sits under the facts and above the register, which is the order the page is read in:
+   what was planned, then save it, then who answered. */
+.fn .tools{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;margin:24px 0 0}
+
 .fn .ask p{font-size:14px;color:#666;margin:0 0 10px}
 .fn .stand{border-left:3px solid #111;background:#f4f4f4;padding:12px 16px;margin:16px 0 0;font-size:15px}
 .fn .stand dl{display:flex;flex-wrap:wrap;gap:6px 28px;margin:8px 0 0}
@@ -85,6 +91,12 @@ const css = `
 .fn .none{margin:14px 0 0;font-size:15px;color:#666}
 .fn .note{background:#f4f4f4;border-left:3px solid #a11111;padding:12px 16px;font-size:14px;margin:22px 0 0}
 .fn .aside{background:#f4f4f4;border-left:3px solid #bdbdbd;padding:12px 16px;font-size:14px;margin:18px 0 0}
+
+/* The one button the register offers on a row rather than in its header. Smaller than the page's own
+   buttons on purpose: it acts on a single person, and the row it sits in already says who. */
+.fn .mini{background:#fff;color:#111;border:1px solid #111;border-radius:2px;padding:7px 14px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap}
+.fn .mini:hover{background:#111;color:#fff}
+.fn .mini:disabled{opacity:.45;cursor:default;background:#fff;color:#111}
 
 @media (max-width:860px){
   .fn .facts div{flex-direction:column;gap:2px}
@@ -151,6 +163,16 @@ export default function IndividualFunction({ community_id, function_id, onBack, 
   const [error, setError] = useState("");
   const [tab, setTab] = useState(null);
   const [chosenEmail, setChosenEmail] = useState("");
+  /*
+    The one write this page makes, and the two things it has to say while that write is on its way:
+    whose row is being saved, and where the last attempt failed. `refresh` reads the function again
+    afterwards rather than recolouring the button, because a confirmation moves a person from one
+    section to the other and both lists are cut out of the same read — leaving them in two places at
+    once would be a register nobody could trust.
+  */
+  const [refresh, setRefresh] = useState(0);
+  const [busyEmail, setBusyEmail] = useState("");
+  const [actionError, setActionError] = useState("");
 
   useEffect(() => {
     let live = true;
@@ -164,8 +186,20 @@ export default function IndividualFunction({ community_id, function_id, onBack, 
         if (!live) return;
         setError(e.message);
       });
-    // The roster is read alongside, not folded into the details: the lookup has to be able to name
-    // somebody who has not answered yet, and a list built only from answers could not.
+    return () => {
+      live = false;
+    };
+  }, [community_id, function_id, refresh]);
+
+  /*
+    The roster is read beside the register, not folded into it: the lookup has to be able to name
+    somebody who has not answered yet, and a list built only from answers could not. It is a separate
+    effect because it answers a different question — who is in this fellowship — and a confirmation
+    below changes nothing about that, so the register re-reads on its own rather than pulling every
+    address in the community again for each receipt a leader checks off.
+  */
+  useEffect(() => {
+    let live = true;
     directory
       .getUsers(community_id)
       .then((list) => live && setPeopleList(list || []))
@@ -173,7 +207,45 @@ export default function IndividualFunction({ community_id, function_id, onBack, 
     return () => {
       live = false;
     };
-  }, [community_id, function_id]);
+  }, [community_id]);
+
+  /*
+    Signing a receipt off, and taking the signature back. The page names which person and which way it
+    is going; the server answers who signed it, off this caller's own token, so a leader's name on a
+    row means they were the one sitting here. A failure is said above the table rather than in the
+    row, because a row that refuses to move is otherwise indistinguishable from a click that never
+    landed.
+  */
+  async function check(person, answer) {
+    setBusyEmail(person.email);
+    setActionError("");
+    try {
+      await functions.confirmPayment({
+        community_id,
+        function_id,
+        user_email: person.email,
+        confirm: answer,
+      });
+      setRefresh((count) => count + 1);
+    } catch (e) {
+      setActionError(e.message);
+    } finally {
+      setBusyEmail("");
+    }
+  }
+
+  // One column of buttons, built for whichever way it goes. `true` is the receipt on the leader's desk
+  // being checked off; `false` is the same button under a name already signed, for the mistake.
+  const actionCell = (answer) => (person) => (
+    <button
+      className="mini"
+      type="button"
+      disabled={busyEmail === person.email}
+      onClick={() => check(person, answer)}
+    >
+      {busyEmail === person.email ? "Saving…" : answer ? "Confirm" : "Unconfirm"}
+    </button>
+  );
 
   const one = detail?.function;
   const answers = detail?.people || [];
@@ -194,6 +266,7 @@ export default function IndividualFunction({ community_id, function_id, onBack, 
             },
             { head: "Confirmed on", cell: (p) => show(stamp(p.confirmed_at)) },
             { head: "Proof", cell: proofCell },
+            { head: "Actions", cell: actionCell(false) },
           ],
         },
         {
@@ -204,6 +277,7 @@ export default function IndividualFunction({ community_id, function_id, onBack, 
             { head: "Person", cell: personCell },
             { head: "Receipt up", cell: (p) => show(stamp(p.proof_submitted_at)) },
             { head: "Proof", cell: proofCell },
+            { head: "Actions", cell: actionCell(true) },
           ],
         },
         {
@@ -252,7 +326,7 @@ export default function IndividualFunction({ community_id, function_id, onBack, 
   /*
     The register under a section is cut into chunks. A function that a whole fellowship has answered
     used to run thirty rows down before the extra members below it, the payment proof column long
-    since out of sight; twenty-five of them are listed, and the line beneath says how many the
+    since out of sight; ten of them are listed, and the line beneath says how many the
     section holds altogether.
   */
   const register = usePager(members, PER_PAGE, `${function_id}|${tab}`);
@@ -334,6 +408,17 @@ export default function IndividualFunction({ community_id, function_id, onBack, 
         </div>
       </dl>
 
+      {/* The page as a file: the plan, every answer, and the receipts pasted in with the path they
+          came from written under them — what an admin needs before clearing old functions. */}
+      <div className="tools">
+        <DownloadFunctionData
+          community_id={community_id}
+          function_id={function_id}
+          name={one.name}
+          detail={detail}
+        />
+      </div>
+
       <div className="ask">
         <h3>Where somebody stands</h3>
         <p>Type a name and surname, or pick from the list. The address is what this looks the function up with; it stays out of the list.</p>
@@ -379,6 +464,8 @@ export default function IndividualFunction({ community_id, function_id, onBack, 
           );
         })}
       </div>
+
+      {actionError && <div className="note">{actionError}</div>}
 
       {members.length ? (
         <div className="tablewrap" id={register.anchorId}>

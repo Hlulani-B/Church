@@ -10,7 +10,7 @@ import BackToCommunities from "../components/back.jsx";
 import ExtraTestimonies from "../components/extra_testimonies.jsx";
 import DownloadTestimonies from "../components/download_testimonies.jsx";
 import ProofViewer from "../components/proof_viewer.jsx";
-import PeoplePicker, { mapUsers } from "../components/people_picker.jsx";
+import PeoplePicker, { mapUsers, personName } from "../components/people_picker.jsx";
 import { adminState, rememberAdmin } from "./state.js";
 
 const accounts = new Auth();
@@ -190,7 +190,12 @@ export default function AdminTestimonies() {
     under the search that is on screen rather than only after a reload.
   */
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ date: "", body: "", type: "text", file: null, allow_all: true, authorise: [] });
+  /*
+    `author` is whose witness this is. It opens on the admin signing the form, so recording one's own
+    testimony takes exactly the clicks it always took, and picking another name is the only way to
+    record it for somebody else.
+  */
+  const [draft, setDraft] = useState({ date: "", body: "", type: "text", file: null, author: "", allow_all: true, authorise: [] });
   const [saving, setSaving] = useState(false);
   const [draftError, setDraftError] = useState("");
   const [refresh, setRefresh] = useState(0);
@@ -278,6 +283,27 @@ export default function AdminTestimonies() {
   const rosterPeople = roster.community_id === communityId ? mapUsers(roster.list) : [];
 
   /*
+    The names an admin may file a witness under: the community's own roster, which already carries the
+    admin because they are a member of it like anybody else. The signed-in address is put in at the top
+    when the read did not return it — an admin whose row is missing from `users` must still be able to
+    record their own testimony, and the alternative is a picker that cannot name the one person looking
+    at it. That stand-in has no name to show, so it is called what it is to the person reading it.
+  */
+  const authorPeople = !email || rosterPeople.some((one) => one.id === email)
+    ? rosterPeople
+    : [{ id: email, name: "You", surname: "" }, ...rosterPeople];
+
+  // Whichever name the form is filing under right now, and how it is spoken. The fellowship's rule is
+  // that a person sees their own address and everyone else's is a name, so the admin's own row is
+  // written out as an address and anybody else's as the name the roster holds for them — never the
+  // other way round, and never the picked address of a member in a box they did not type themselves.
+  const draftAuthor = draft.author || email;
+  const draftAuthorName =
+    draftAuthor === email
+      ? `${email} (you)`
+      : personName(authorPeople.find((one) => one.id === draftAuthor) || { id: draftAuthor });
+
+  /*
     The dates are compared as written, so a first date after the second is a search that can
     only come back empty. It is said here instead of shown as a zero. The name is trimmed here
     so a search for a word that is only spaces is no search at all.
@@ -309,7 +335,15 @@ export default function AdminTestimonies() {
   }
 
   function openAdd() {
-    setDraft({ date: today(), body: "", type: "text", file: null, allow_all: true, authorise: [] });
+    setDraft({
+      date: today(),
+      body: "",
+      type: "text",
+      file: null,
+      author: email,
+      allow_all: true,
+      authorise: [],
+    });
     setDraftError("");
     setAdding(true);
   }
@@ -381,10 +415,12 @@ export default function AdminTestimonies() {
   }
 
   /*
-    Only the day and the words are typed. The address the row is written against is the one
-    signed in here and the community is the one on screen, both of which the page function
-    chooses rather than the form. A testimony that falls outside the dates being shown is said
-    out loud, because otherwise saving looks like it did nothing.
+    Three things are typed: the day, the words, and whose witness it is. The community is the one on
+    screen, which the page chooses rather than the form. Recording it for a member writes the row
+    against that member's address, so it lands on their own screen and under their name in this list —
+    which is the whole point of the box, and what an admin does when a testimony was told aloud in the
+    service and nobody typed it up afterwards. A testimony that falls outside the dates being shown is
+    said out loud, because otherwise saving looks like it did nothing.
   */
   async function saveTestimony(event) {
     event.preventDefault();
@@ -393,7 +429,7 @@ export default function AdminTestimonies() {
     try {
       const one = await testimonies.addTestimony({
         community_id: communityId,
-        email,
+        email: draftAuthor,
         date: draft.date,
         type: draft.type,
         body: draft.body,
@@ -413,7 +449,14 @@ export default function AdminTestimonies() {
         : name
           ? ", which this search by name may not list."
           : ".";
-      setNote(`Your testimony for ${pretty(one.date)} is recorded${offSearch}`);
+      /*
+        Named for whoever it was filed under. An admin who has just recorded a member's testimony and is
+        told "your testimony" would go looking for it on the wrong row entirely.
+      */
+      const whose = draftAuthor === email
+        ? "Your"
+        : `${personName(authorPeople.find((one) => one.id === draftAuthor) || { id: draftAuthor })}'s`;
+      setNote(`${whose} testimony for ${pretty(one.date)} is recorded${offSearch}`);
       setError("");
       setRefresh((count) => count + 1);
     } catch (e) {
@@ -719,8 +762,21 @@ export default function AdminTestimonies() {
           >
             <h2 className="serif">Add a testimony</h2>
             <p className="who">
-              Recorded against {email} in {admin.name || "this community"}.
+              Recorded against {draftAuthorName} in {admin.name || "this community"}.
             </p>
+
+            {/* Whose witness this is, on the same box every other For-who choice in the app uses. It
+                opens on the admin — they are in this list, and filing one's own testimony takes the same
+                two clicks it always took. */}
+            <label>
+              Whose testimony
+              <PeoplePicker
+                people={authorPeople}
+                value={draft.author}
+                onChange={(id) => setDraft({ ...draft, author: id })}
+                placeholder="Search by name to record it for that member"
+              />
+            </label>
 
             <label>
               Date
@@ -792,6 +848,12 @@ export default function AdminTestimonies() {
                   placeholder="Search by name to authorise"
                 />
               </label>
+            )}
+
+            {!draft.allow_all && (
+              <p className="who">
+                Only the people above will be able to read it, so put {draftAuthor === email ? "yourself" : draftAuthorName} in that list too if that person should see it.
+              </p>
             )}
 
             {draftError && <p className="fail">{draftError}</p>}

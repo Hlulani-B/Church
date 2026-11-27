@@ -132,6 +132,20 @@ const MEMBERSHIP = [
   { email: 'abdul.osman@example.com', community: 'Stream of Hope Fellowship', role: 'member' },
 ]
 
+/*
+  A banner picture for each fellowship, so a hero has something painted in it the moment a community
+  is opened rather than showing the plain band until an admin finds Community settings. The addresses
+  are picsum's /seed/ ones, which answer the same photograph for the same word for as long as the
+  service is up — the same trick the sample receipts use, so a community seeded last week still shows
+  the picture it was seeded with. Real ones go to Firebase Storage instead, and the column holds
+  whichever address the settings page wrote there.
+*/
+const HERO = {
+  'Grace Point Fellowship': 'https://picsum.photos/seed/gracepoint/1600/900',
+  'Stream of Hope Fellowship': 'https://picsum.photos/seed/streamofhope/1600/900',
+  'Cornerstone Praise Fellowship': 'https://picsum.photos/seed/cornerstone/1600/900',
+}
+
 // Words for the bulk pass: five lists of five, crossing into 625 different sentences, so
 // 50 testimonies never read as the same line twice.
 function simpleWords(one) {
@@ -339,13 +353,13 @@ describe('seed dummy data (all tables, kept in DB)', () => {
     }
     console.log(`users: ${PEOPLE.length} created/updated, admin is ${ADMIN}`)
 
-    // --- 3. community: two fellowships, each with a join code a person could type.
+    // --- 3. community: two fellowships, each with a join code a person could type and a banner.
     const { Community } = await import('./src/functions/community.js')
     const communities = new Community(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
     const grace = await communities.create({ name: 'Grace Point Fellowship' })
-    await communities.update(grace.community_id, { join_id: 'GRACE7' })
+    await communities.update(grace.community_id, { join_id: 'GRACE7', picture: HERO['Grace Point Fellowship'] })
     const hope = await communities.create({ name: 'Stream of Hope Fellowship' })
-    await communities.update(hope.community_id, { join_id: 'HOPE22' })
+    await communities.update(hope.community_id, { join_id: 'HOPE22', picture: HERO['Stream of Hope Fellowship'] })
     const idOf = { 'Grace Point Fellowship': grace.community_id, 'Stream of Hope Fellowship': hope.community_id }
 
     // --- 4. community_members: who belongs where, and what role they hold.
@@ -1742,7 +1756,7 @@ describe('seed dummy data (all tables, kept in DB)', () => {
     const { Community } = await import('./src/functions/community.js')
     const communities = new Community(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
     const corner = await communities.create({ name: NAME, created_by: ADMIN })
-    await communities.update(corner.community_id, { join_id: 'STONE4' })
+    await communities.update(corner.community_id, { join_id: 'STONE4', picture: HERO[NAME] })
     const id = corner.community_id
 
     const { CommunityMember } = await import('./src/functions/community_members.js')
@@ -2177,8 +2191,10 @@ describe('seed dummy data (all tables, kept in DB)', () => {
       expect(first.ok).toBe(true)
     }
     // And the community carries the address the delete button is going to ask for.
-    const { data: ownerRow } = await db.from('community').select('name, join_id, created_by').eq('community_id', id).single()
+    const { data: ownerRow } = await db.from('community').select('name, join_id, created_by, picture').eq('community_id', id).single()
     expect(ownerRow.created_by).toBe(ADMIN)
     expect(ownerRow.join_id).toBe('STONE4')
+    // and the banner the hero paints, which the settings page is the other way to change.
+    expect(ownerRow.picture).toBe(HERO[NAME])
   }, 300_000)
 })

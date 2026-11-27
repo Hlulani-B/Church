@@ -45,13 +45,27 @@ export class AdminDashboardFetch {
   }
 
   /*
-    The one community being administered: { community_id, name, join_id }. The name goes
-    in the heading so the page can say which group the list below belongs to, and the
-    join_id is the code people type to find it. /api/admin answers this for an admin of
-    that community_id and for nobody else.
+    The one community being administered: { community_id, name, join_id, picture }. The name goes
+    in the heading so the page can say which group the list below belongs to, the join_id is the
+    code people type to find it, and the picture is the address the hero banner paints. /api/admin
+    answers this for an admin of that community_id and for nobody else.
   */
   async getCommunity(community_id) {
     return callGod('community', { function: 'find', community_id })
+  }
+
+  /*
+    Renames the fellowship, changes its picture, or both — the two things about a community that an
+    admin is allowed to say. Nothing else can be written through here: `join_id` is drawn by
+    'changeCode' rather than typed, and `created_by` is a record of who opened the group rather than
+    a field to edit. Both refusals are the endpoint's, and it answers with the row as it now stands,
+    so the screen shows what was saved rather than what was asked for.
+  */
+  async saveCommunity(community_id, { name, picture }) {
+    const changes = {}
+    if (name !== undefined) changes.name = String(name).trim()
+    if (picture !== undefined) changes.picture = picture === '' ? null : picture
+    return callGod('community', { function: 'update', community_id, changes })
   }
 
   /*

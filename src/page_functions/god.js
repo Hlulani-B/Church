@@ -23,7 +23,10 @@ import { auth, ready } from '../firebase.js'
 const TIER = {
   // 'getUsers' names the community's people, which is a leader's read; the caller's own row stays self.
   user: (fn) => (fn === 'getUsers' ? 'leader' : 'self'),
-  community: (fn) => (fn === 'find' ? 'admin' : 'self'),
+  // 'find' and 'update' both read or write the whole community row, join_id included, so both are
+  // an admin's tier. Renaming the fellowship and changing its picture are in that same write, gated
+  // to an admin of it by /api/admin and narrowed to those two columns there.
+  community: (fn) => (fn === 'find' || fn === 'update' ? 'admin' : 'self'),
   // Emptying a community of its record, the community itself left standing. Admin tier, and inside it
   // the stricter question the endpoint asks: whether the signed-in address is the one that opened the
   // community.

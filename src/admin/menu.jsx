@@ -1,10 +1,15 @@
 import Menu from "../components/menu.jsx";
 
 /*
-  The menu for the screens of one community that you administer: two links above Profile and
+  The menu for the screens of one community that you administer: three links above Profile and
   Log out, handing the state built by `adminState` on unchanged — community, name and address,
   every time. Nothing here works out which community you mean: without one there is nothing to
   administer, so the plain menu is what you get and the link never appears.
+
+  Community settings is where the fellowship's own name and picture are changed. It is offered
+  beside the dashboard rather than from inside it, because the dashboard is already carrying the
+  room — a live check-in, the roster, the join code — and the two things a community is called and
+  shown as belong to it as a whole rather than to today.
 
   Deleting all the data is offered to any admin, because being an admin is what gets you to the
   screen; whether this particular admin is the one who opened the community is a question the
@@ -23,6 +28,7 @@ export default function AdminMenu({ state }) {
       heading="Admin"
       items={[
         { label: "Admin dashboard", to: "/admin-dashboard", state },
+        { label: "Community settings", to: "/admin-settings", state },
         { label: "Delete all data", to: "/delete-community", state },
       ]}
     />

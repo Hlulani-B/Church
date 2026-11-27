@@ -9,7 +9,7 @@ re-runnable, because they drop themselves before they create — see Notes.
 | Table | Purpose |
 | --- | --- |
 | `users` | One row per person, keyed by `email`. |
-| `community` | A group of people, such as a fellowship, carrying the `join_id` code others use to find it. |
+| `community` | A group of people, such as a fellowship, carrying the `join_id` code others use to find it and the `picture` address its banner is painted from. |
 | `community_members` | Links a person to a community and carries their `role`: `member`, `leader` or `admin`. |
 | `session` | A check-in session opened by a leader: a `pin`, the gathering it was opened for, a date, a window and the place it was opened from. |
 | `event` | One row per member per event: whether they attended, the reason if they did not, and who recorded it. |
@@ -340,6 +340,23 @@ alter table function_paid enable row level security;
   sentence a leader types and a page prints. The write path keeps blank as a null rather than as
   the empty string: `/api/leader` trims what the page sent and turns nothing at all back into a
   null, so an empty box and a box nobody filled in are the same answer in the table.
+- `picture` is the address an admin dashboard's banner is painted from, and it arrived the same way
+  as `location`: a plain nullable text column added to a table that already had rows, so every
+  community opened before it ran has no picture and shows the band plain.
+
+  ```sql
+  alter table community add column picture text;
+  ```
+
+  Nothing is checked in the database about it either, because both ways it is written already
+  check everything. Uploading a picture puts it in this project's Firebase Storage under
+  `community-pictures/<community_id>/<moment>.jpg` and saves the download url the bucket hands
+  back; typing an address is normalised through `new URL` by `/api/admin` and refused unless it is
+  http(s); an empty box writes a null, which is not a broken picture but the plain band. A replaced
+  or removed picture that this app uploaded is deleted out of the bucket once the new address is
+  safely saved, and one it did not upload is left alone. Every page paints through `pictureUrl`
+  (`src/page_functions/picture.js`), so a value put into the column by hand can neither fetch from
+  anywhere it likes nor break the rule it is embedded in.
 - `paid_fields_match` gives the two halves of `function_paid` one meaning each. `paid` true is a
   receipt: `proof_path` and `proof_submitted_at` both filled, and the promised date cleared, so
   a row cannot say the money arrived and still hold the date it was meant to. `paid` false is a

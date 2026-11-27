@@ -15,8 +15,9 @@ import {
   /api/admin — what an admin may change about the community they own.
 
   This is the third of the three endpoints god.js was split into by auth tier. Everything here
-  changes who a community is: its people, their roles, its join code, and the row that carries the
-  old code. A leader may read all of that but change none of it, so the gate below asks for the
+  changes who a community is: its people, their roles, its join code, the row that carries the
+  old code, and what the community is called and shown as. A leader may read all of that but change
+  none of it, so the gate below asks for the
   stricter of the two answers — an admin of the community named in the body, read off the caller's
   own community_members row against the email the Firebase token forces, never the body's.
 
@@ -40,7 +41,12 @@ import {
 const ADMIN_ACTIONS = {
   admin: ['changeCode', 'assign'],
   member: ['remove'],
-  community: ['find'],
+  /*
+    'find' is here only because the row it returns carries join_id. 'update' is the settings page's
+    write, and the branch below it keeps to two columns of `community` — see that comment for why
+    nothing else on the row can be reached this way.
+  */
+  community: ['find', 'update'],
   /*
     The one irreversible thing a browser is allowed to ask for: every record inside this community,
     and the files those records point at. The community row and its members stay — this is a clearing
@@ -151,6 +157,62 @@ export default async function handler(req, res) {
             .json({ error: 'that is the only admin, so the community would be left with nobody who can manage it' })
         }
       }
+    }
+    /*
+      What a community is called, and the picture it is shown under. Two columns, and the only two:
+      `join_id` is drawn by 'changeCode' rather than typed by anybody, and `created_by` is the record
+      the delete-everything gate is compared against, so neither can be written from a browser at all
+      — an update that named one would simply not carry it on. A name is required to be a name, since
+      an empty one would leave every screen in the fellowship calling itself nothing. A picture is
+      either a real http address, normalised through `new URL` so the column cannot hold a fragment
+      that a page would later paint with, or null to take the picture away and go back to the plain
+      band. Whether the caller is an admin of this community was settled by the role gate above.
+    */
+    if (action === 'community' && params.function === 'update') {
+      const given = params.changes || {}
+      const changes = {}
+      if (given.name !== undefined) {
+        const name = String(given.name).trim()
+        if (!name) {
+          return res
+            .status(400)
+            .json({ error: 'params.changes.name cannot be empty — a community is always called something' })
+        }
+        if (name.length > 120) {
+          return res.status(400).json({ error: 'params.changes.name is too long for a community name' })
+        }
+        changes.name = name
+      }
+      if (given.picture !== undefined) {
+        const typed = String(given.picture || '').trim()
+        if (!typed) {
+          changes.picture = null
+        } else {
+          let address = null
+          try {
+            address = new URL(typed)
+          } catch {
+            return res.status(400).json({
+              error: 'params.changes.picture has to be the full web address of a picture, or empty to remove it',
+            })
+          }
+          if (address.protocol !== 'https:' && address.protocol !== 'http:') {
+            return res
+              .status(400)
+              .json({ error: 'params.changes.picture has to be an http(s) address' })
+          }
+          if (address.href.length > 600) {
+            return res.status(400).json({ error: 'params.changes.picture is too long to be an address' })
+          }
+          changes.picture = address.href
+        }
+      }
+      if (!Object.keys(changes).length) {
+        return res
+          .status(400)
+          .json({ error: 'params.changes must hold a name, a picture, or both' })
+      }
+      params = { ...params, changes }
     }
     /*
       Emptying a community. Four things have to be true before a single row is touched, and none of

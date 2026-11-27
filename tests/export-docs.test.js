@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { isFilePath, kindOf, nameOf } from '../src/page_functions/export/attachments.js'
-import { functionSpec } from '../src/page_functions/export/function_docs.js'
+import { isFilePath, kindOf, loadAttachment, nameOf } from '../src/page_functions/export/attachments.js'
+import { functionSpec, receiptFiles } from '../src/page_functions/export/function_docs.js'
 import { servingsSpec } from '../src/page_functions/export/servings_docs.js'
 import { testimoniesSpec } from '../src/page_functions/export/testimony_docs.js'
 import { mapLimit, ratio } from '../src/page_functions/export/pool.js'
@@ -241,6 +241,59 @@ describe('functionSpec — the register as it must print', () => {
     })
     expect(spec.sections.find((one) => one.heading === 'Extra members attending').table.rows[0]).toEqual(['Sipho Zulu', 'Coming'])
     expect(spec.sections.find((one) => one.heading === 'Payments from extra members').table.rows[0][1]).toBe('Paid')
+  })
+
+  /*
+    The archive asks for the bytes as well as the picture, because a receipt that is a pdf or a docx has
+    never once fitted inside a page — until now the answer was a printed url. Two things have to hold: the
+    file comes back whole, and a page that cannot use it is still not downloaded for at all.
+  */
+  it('carries the file itself when a folder is asked for, and not when it is not', async () => {
+    const fetched = vi.fn(async () => ({ ok: true, blob: async () => ({ size: 12, type: 'application/pdf' }) }))
+    vi.stubGlobal('fetch', fetched)
+
+    const kept = await loadAttachment('https://bucket.test/kopano/receipts/one.pdf', { keep: true })
+    expect(kept.blob).toEqual({ size: 12, type: 'application/pdf' })
+    expect(kept.bytes).toBe(12)
+    expect(kept.reason).toContain('saved as a file in the folder')
+
+    vi.unstubAllGlobals()
+    vi.stubGlobal('fetch', fetched)
+    const for_a_page = await loadAttachment('https://bucket.test/kopano/receipts/one.pdf')
+    expect(for_a_page.blob).toBeUndefined()
+    expect(fetched).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('receiptFiles — what an archive folder carries', () => {
+  const spec = (entries) => ({ sections: [{ heading: 'Payment receipts', entries }] })
+
+  it('keeps the order the document prints in and the person the entry is headed with', () => {
+    const files = receiptFiles(
+      spec([
+        { heading: 'Nomsa Dube — one.pdf', who: 'Nomsa Dube', images: [{ name: 'one.pdf', path: 'p/one.pdf', blob: { size: 3 } }] },
+        { heading: 'Sipho Zulu — two.png', who: 'Sipho Zulu', images: [{ name: 'two.png', path: 'p/two.png', blob: { size: 9 } }] },
+      ]),
+    )
+    expect(files.map((one) => `${one.who}/${one.name}`)).toEqual(['Nomsa Dube/one.pdf', 'Sipho Zulu/two.png'])
+  })
+
+  /*
+    A receipt that refused to load has nothing to save. It stays in the document as the failure it is and
+    is left out of the folder, rather than becoming a zero-byte file that looks like a lost upload.
+  */
+  it('skips a file that came back with no bytes', () => {
+    const files = receiptFiles(
+      spec([
+        { heading: 'Nomsa Dube — one.pdf', who: 'Nomsa Dube', images: [{ name: 'one.pdf', reason: 'the file refused to load (404)' }] },
+      ]),
+    )
+    expect(files).toEqual([])
+  })
+
+  it('says nothing about files when a function had no receipts at all', () => {
+    expect(receiptFiles({ sections: [{ heading: 'Attending', table: {} }] })).toEqual([])
+    expect(receiptFiles(undefined)).toEqual([])
   })
 })
 

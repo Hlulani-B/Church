@@ -25,6 +25,12 @@ const functions = new ChurchFunctionsFetch()
 const NO_NAME = 'someone this fellowship has not named'
 const NO_LEADER = 'a leader this fellowship has not named'
 
+/*
+  The heading the receipts of a function are listed under. Named because `receiptFiles` finds them again
+  by it, and a section renamed in one place only has to be renamed in one place.
+*/
+const RECEIPTS = 'Payment receipts'
+
 // A price in words. A paid function with no number in it is impossible through the form and only
 // arrives from a hand-written insert, so it is described rather than printed as `R NaN`.
 function amount(one) {
@@ -70,13 +76,17 @@ function receipts(people, payments) {
   is only complete with the people who never joined. Attachments are fetched here, once, and what
   comes back is either bytes to paste or the reason there are none — a missing receipt is written into
   the document rather than dropped from it.
+
+  `keepFiles` asks for the file behind every receipt as well as the picture of it. The document does not
+  change either way; what changes is that the loaded file carries its bytes, which is what lets an
+  archive folder hold the pdf a page could never paste.
 */
-export async function functionSpec({ detail, attending = [], paid = [] }, { onProgress } = {}) {
+export async function functionSpec({ detail, attending = [], paid = [] }, { onProgress, keepFiles = false } = {}) {
   const one = detail?.function || {}
   const people = detail?.people || []
   const paying = Boolean(one.requires_payment)
   const receiptList = receipts(people, paid)
-  const loaded = await loadAttachments(receiptList.map((one) => one.path), { onProgress })
+  const loaded = await loadAttachments(receiptList.map((one) => one.path), { onProgress, keep: keepFiles })
 
   return {
     title: one.name || 'A function without a name',
@@ -183,10 +193,13 @@ export async function functionSpec({ detail, attending = [], paid = [] }, { onPr
               empty: 'No payment is recorded for an extra member under this function.',
             },
             {
-              heading: 'Payment receipts',
-              note: 'Each file below is the proof as it was uploaded, pasted at the width of the page with the address it came from under it. A file that could not be read is named anyway, with why.',
+              heading: RECEIPTS,
+              note: keepFiles
+                ? 'Each file below is the proof as it was uploaded, pasted at the width of the page where a page can hold it and saved whole in this function\'s folder where it cannot. A file that could not be read is named anyway, with why.'
+                : 'Each file below is the proof as it was uploaded, pasted at the width of the page with the address it came from under it. A file that could not be read is named anyway, with why.',
               entries: receiptList.map((item, index) => ({
                 heading: `${item.who} — ${item.name}`,
+                who: item.who,
                 images: [loaded[index] || { path: item.path, name: item.name, reason: 'it was not read' }],
               })),
               lines: receiptList.length ? [] : ['Nothing was attached to any payment under this function.'],
@@ -216,6 +229,27 @@ function said(person) {
 }
 
 /*
+  The receipts of a built spec as files rather than as pictures on a page, in the order the document
+  prints them so `03_…` in a folder is the third entry under Payment receipts. Only a file that came
+  back with bytes is listed: one that refused to load has nothing to save, and the page already says so
+  where the picture would have been.
+
+  `who` travels with it because the bucket renames an upload to something nobody can read — the person
+  is the only part of the name that means anything next to a filename like `1704883200123.jpg`.
+*/
+export function receiptFiles(spec) {
+  const section = (spec?.sections || []).find((one) => one.heading === RECEIPTS)
+  const files = []
+  for (const entry of section?.entries || []) {
+    for (const image of entry.images || []) {
+      if (!image?.blob) continue
+      files.push({ who: entry.who || 'a payment', name: image.name, path: image.path, blob: image.blob, bytes: image.bytes })
+    }
+  }
+  return files
+}
+
+/*
   One function read from start to finish, for a caller that has the ids and wants the document: the
   register from the leader's tier, the extra members' two tables from the server, the spec built out of
   them, and the PDF rendered. The money table is only read under a function that asks for money — a free
@@ -224,8 +258,15 @@ function said(person) {
   `detail` may be handed in by the page that is already showing it, which is what makes the PDF an
   export of what was read rather than a second, possibly different, read. It is optional because the
   archive of every function has no screen to borrow from.
+
+  `files` is for that archive: it asks for the receipts to be carried as files as well, and they come
+  back on `attachments`. A caller that saves one PDF and nothing else leaves it off, because the bytes
+  would be fetched, held, and thrown away.
 */
-export async function buildFunctionPdf({ community_id, function_id, name, detail: given }, { onProgress } = {}) {
+export async function buildFunctionPdf(
+  { community_id, function_id, name, detail: given, files = false },
+  { onProgress } = {},
+) {
   const detail = given || (await functions.getFunctionDetails({ community_id, function_id }))
   const paying = Boolean(detail?.function?.requires_payment)
   const [attending, paid] = await Promise.all([
@@ -233,7 +274,7 @@ export async function buildFunctionPdf({ community_id, function_id, name, detail
     paying ? extra.getFunctionPaid(function_id).catch(() => []) : Promise.resolve([]),
   ])
 
-  const spec = await functionSpec({ detail, attending: attending || [], paid: paid || [] }, { onProgress })
+  const spec = await functionSpec({ detail, attending: attending || [], paid: paid || [] }, { onProgress, keepFiles: files })
   const title = name || spec.title
-  return { spec, title, blob: await renderPdf(spec) }
+  return { spec, title, blob: await renderPdf(spec), attachments: files ? receiptFiles(spec) : [] }
 }

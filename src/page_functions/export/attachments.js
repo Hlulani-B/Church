@@ -1,5 +1,6 @@
 /*
-  Getting a stored file into a shape a PDF can hold.
+  Getting a stored file into a shape an export can hold — a picture a PDF can paste, and the file
+  itself for an archive folder.
 
   Every attachment in this app — a payment receipt, a testimony picture — is a public url in the
   `kopano` bucket, kept in a column like `function_paid.proof_path`. The bucket answers
@@ -46,23 +47,44 @@ export function isFilePath(value) {
   gone missing is worse than one that says so on the line where the picture would have been. The
   caller always gets `path` and `name` back, plus `dataUrl`/`format`/`width`/`height` when the file is
   something a page can carry, and `reason` when it is not.
+
+  `keep` is for a caller that is building a folder rather than a page — the functions archive — and it
+  changes what a fetch is for. A file that is not a picture cannot be pasted into a PDF at all, so on
+  its own it was never worth downloading and only the path was kept. Asked to keep, the bytes come back
+  on `blob` whatever the file is, so the pdf, the docx and the photo a browser would not decode all
+  exist in the archive as the things themselves instead of as a url that dies with the row.
 */
-export async function loadAttachment(path) {
+export async function loadAttachment(path, { keep = false } = {}) {
   const base = { path: String(path || ''), name: nameOf(path), kind: kindOf(path) }
   if (!base.path) return { ...base, reason: 'nothing was attached' }
-  if (base.kind !== 'image') {
+  if (base.kind !== 'image' && !keep) {
     return { ...base, reason: base.kind === 'pdf' ? 'a pdf cannot be pasted, only the path is kept' : 'not an image' }
   }
 
+  let blob = null
   try {
     const response = await fetch(base.path)
     if (!response.ok) return { ...base, reason: `the file refused to load (${response.status})` }
-    const blob = await response.blob()
-    const drawn = await rasterise(blob)
-    return drawn ? { ...base, ...drawn } : { ...base, reason: 'the picture could not be read' }
+    blob = await response.blob()
   } catch (error) {
     return { ...base, reason: `the file could not be read (${error.message || 'network'})` }
   }
+
+  const carried = keep ? { blob, bytes: blob.size } : null
+  if (base.kind !== 'image') {
+    return { ...base, ...carried, reason: `${base.kind === 'pdf' ? 'a pdf' : 'that file'} cannot be pasted into a page, so it is saved as a file in the folder` }
+  }
+
+  const drawn = await rasterise(blob)
+  return drawn
+    ? { ...base, ...drawn, ...carried }
+    : {
+        ...base,
+        ...carried,
+        reason: carried
+          ? 'the picture could not be read by this browser, so it is saved as a file in the folder'
+          : 'the picture could not be read',
+      }
 }
 
 // Bytes → a canvas → a JPEG data url. Returns null when the browser cannot decode the file at all,
@@ -99,8 +121,9 @@ async function rasterise(blob) {
   Every attachment a list of values holds, fetched together. Files are the slow half of an export —
   a register of 40 receipts is 40 fetches — so they are run a handful at a time rather than all at
   once, and returned in the order they were given so a page assembles in the sequence it is printed.
+  `keep` is handed to every one of them, because the caller that wants a folder wants it for all of them.
 */
-export async function loadAttachments(paths, { limit = 4, onProgress } = {}) {
+export async function loadAttachments(paths, { limit = 4, onProgress, keep = false } = {}) {
   const wanted = paths.map((path) => String(path || '')).filter(Boolean)
   const unique = [...new Set(wanted)]
   const loaded = new Map()
@@ -111,7 +134,7 @@ export async function loadAttachments(paths, { limit = 4, onProgress } = {}) {
     while (next < unique.length) {
       const index = next++
       const path = unique[index]
-      loaded.set(path, await loadAttachment(path))
+      loaded.set(path, await loadAttachment(path, { keep }))
       done += 1
       onProgress?.({ done, total: unique.length })
     }

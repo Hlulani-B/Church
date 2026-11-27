@@ -15,14 +15,57 @@ import supabase from '../supabase.js'
   encrypted words (an `enc:v1:` string) or an uploaded file's public URL in `body`, and stores the
   author's own address as ciphertext in `user_email`. Nothing here opens either — it is written and
   returned exactly as it came, so the at-rest encryption stays entirely client-side.
+
+  One thing is read rather than passed through: when a row is deleted, the file whose address its
+  `body` carried goes out of the bucket with it, because the row was the only thing that knew the file
+  existed. That is the whole of the server's part in taking a testimony back out — which rows belong to
+  the person asking is a question only the browser's key can answer.
 */
 
 const router = Router()
 
 const TYPES = ['text', 'image', 'pdf', 'docx']
 
+const BUCKET = 'kopano'
+
+// The shape every upload from this app comes back as, and the only folder this table's files live in.
+const PUBLIC = `/storage/v1/object/public/${BUCKET}/`
+const FOLDER = 'testimonies/'
+
+/*
+  A stored `body` that is one of this bucket's testimony files, read back as the path of the object
+  inside it — and empty for anything else. Encrypted words hold no address, a link somebody typed into
+  a box on another site is not this project's file to delete, and an object outside `testimonies/` was
+  put there by a different table's writer, which is the one that has to answer for it. This is the same
+  reading `bucketPath` does in src/functions/community_purge.js, kept local because the standalone
+  server does not reach into the browser's source tree.
+*/
+function objectPath(value) {
+  const text = String(value || '').trim()
+  const at = text.indexOf(PUBLIC)
+  if (at < 0) return ''
+  const rest = text.slice(at + PUBLIC.length).split('?')[0]
+  if (!rest.startsWith(FOLDER) || rest.split('/').includes('..')) return ''
+  try {
+    return decodeURIComponent(rest)
+  } catch {
+    // A path with a stray `%` in it is not a name the uploader ever wrote, so it is not one to delete.
+    return ''
+  }
+}
+
 function day(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value) : null
+}
+
+/*
+  `testimony_id` is a uuid column, so a string that is not one names no row — and yet Postgres answers
+  the comparison with a type error rather than an empty result, which on a delete would surface as a
+  500 about a testimony that is simply not there. The shape is checked first, so an id that could never
+  have come from this table is answered the way an absent row is.
+*/
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim())
 }
 
 // allow_all is the switch: true empties authorise and opens the row; false keeps the listed addresses.
@@ -110,8 +153,27 @@ router.patch('/:testimony_id', async (req, res) => {
   res.json(data)
 })
 
-// Removing one testimony, kept for parity with the other write routes.
+// Removing one testimony, and the file that was the sharing when the sharing was a file.
 router.delete('/:testimony_id', async (req, res) => {
+  if (!isUuid(req.params.testimony_id)) {
+    res.status(404).json({ error: 'not_found', message: 'No such testimony.' })
+    return
+  }
+  /*
+    The row is read before it goes, because `body` is the only place the file's address was ever
+    written down. A text testimony keeps encrypted words in that column and a file keeps its public
+    url, so the read is what tells the two apart; once the row is deleted nothing can say what was
+    uploaded, and the object would sit in the bucket taking room for a sharing nobody can find.
+
+    Only the browser's own lossless preparation put a file here, and only this route's inserts wrote
+    the row, so an object nobody can name any more is a file nobody can load either.
+  */
+  const { data: row } = await supabase
+    .from('testimony')
+    .select('testimony_id, body')
+    .eq('testimony_id', req.params.testimony_id)
+    .maybeSingle()
+
   const { data, error } = await supabase
     .from('testimony')
     .delete()
@@ -126,7 +188,23 @@ router.delete('/:testimony_id', async (req, res) => {
     res.status(404).json({ error: 'not_found', message: 'No such testimony.' })
     return
   }
-  res.json({ removed: true, testimony_id: data[0].testimony_id })
+
+  const path = objectPath(row?.body)
+  if (!path) {
+    res.json({ removed: true, testimony_id: data[0].testimony_id, file: null })
+    return
+  }
+  /*
+    The row is gone either way, so a bucket that refuses is reported rather than reversed — a testimony
+    nobody can read is not being kept alive by its file. What is said out loud is the difference between
+    "the room got smaller" and "it did not", which is the difference the caller cares about.
+  */
+  const { error: fileError } = await supabase.storage.from(BUCKET).remove([path])
+  res.json({
+    removed: true,
+    testimony_id: data[0].testimony_id,
+    file: { path, taken: !fileError },
+  })
 })
 
 export default router

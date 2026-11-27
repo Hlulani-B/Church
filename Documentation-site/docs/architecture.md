@@ -107,6 +107,7 @@ So the split today is:
 | Feedback — the form every member can reach from the menu, and the pile everyone can read | `/api/self` `feedback` `create` / `all` |
 | Functions — a leader or an admin plans a gathering, reads its tallies, and opens one out to see who has answered | `/api/leader` `church_function` `list` / `create` / `details` |
 | Available functions and the RSVP — any member sees what is still to come and answers for themselves | `/api/self` `church_function` `available` / `rsvp` / `respond` |
+| Leave a community — the caller's own roster row goes and everything they recorded stays; the sharings go only if they ask, and the browser is the only thing that can tell whose they are | `/api/self` `member` `leave`, plus direct Supabase for their own testimonies |
 
 The leader pages are the admin ones with nothing to click: the roster arrives without the
 ⋮ menu that changes a role or takes somebody out, and no leader page asks the function for
@@ -174,6 +175,16 @@ note, never to a sentence about who is missing. The session pollers keep their o
 exception worth naming: `SessionLive` and `AttendanceControl` render nothing at all when they have no
 rows, because "no check-in is open right now" is genuinely what an empty answer means there, and both
 stand on the last poll that did answer when one fails.
+
+A long list is then cut into chunks by `src/components/pager.jsx`, and that control has to survive
+being dropped into a dozen stylesheets it does not own. Its rules are scoped under `kp-pg` and every
+name inside it carries the same prefix, because scoping a rule is not the same as being unreachable:
+`go` is this app's primary button, written as the black box of a form in about fifteen files (`.au .go`,
+`.xt .go`, and the green-bordered `.sl .say` beside it), and a descendant selector of that shape lands
+on anything nested inside. A `go` named here therefore inherited a black background, white text and
+twenty pixels of padding, and the bar under a roster printed as a black block on every dashboard.
+`tests/pager-classes.test.js` holds both halves of the rule now — the control's own classes are
+prefixed, and no page styles its parts.
 
 ## The one place the read disagrees with the table
 
@@ -284,9 +295,11 @@ instead.
   security, so the same insert made with the browser key instead of through the function is
   not refused at all. See the next section.
 - **Leaving cannot empty a community, and a role change cannot unmanage it**: a browser
-  may not remove the last member, nor demote the only admin, and may not add itself with
-  `role` `leader` to a community that already has members. All four refusals are in
-  `api/self.js` and `api/admin.js` and were each confirmed against live data.
+  may not remove the last member, nor demote the only admin, nor may an admin walk out of a
+  fellowship that has no other admin to leave behind, and may not add itself with
+  `role` `leader` to a community that already has members. All five refusals are in
+  `api/self.js` and `api/admin.js`; the four that were here first were each confirmed
+  against live data, and the newest of them is held by `tests/member-leave.test.js`.
 - **A browser cannot move a user row onto another address.** `api/self.js` filters
   `params.changes` down to `name` and `surname` before the update is sent, so an `email`
   in the request is dropped there rather than reaching the table. The address is only

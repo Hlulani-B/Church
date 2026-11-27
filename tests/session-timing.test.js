@@ -4,6 +4,7 @@ import {
   isHeldBack,
   minutesUntilStart,
   sessionStatus,
+  waitUntilStart,
 } from '../src/page_functions/session_timing.js'
 
 /*
@@ -115,5 +116,30 @@ describe('isHeldBack', () => {
     const inFourHours = row({ started_at: new Date(NOW + 240 * MIN).toISOString() })
     expect(isHeldBack(inFourHours, { now: NOW, lead: 120 })).toBe(true)
     expect(isHeldBack(inFourHours, { now: NOW, lead: 300 })).toBe(false)
+  })
+})
+
+describe('waitUntilStart', () => {
+  /*
+    The collapsed line used to explain only the window — "it opens more than two hours from now" — and
+    a reader on the 27th looking at a register for the 6th heard a clock that had not been set. The
+    folded rows are days out by definition, so the line leads with the wait and keeps the window as the
+    reason behind it.
+  */
+  it('says nine days for the reported register, not two hours', () => {
+    expect(waitUntilStart(row({ started_at: '2026-12-06T09:00:00.000Z' }), NOW)).toBe('9 days')
+  })
+
+  it('sizes the number to the wait a reader would use', () => {
+    expect(waitUntilStart(row({ started_at: new Date(NOW + 45 * MIN).toISOString() }), NOW)).toBe('45 min')
+    expect(waitUntilStart(row({ started_at: new Date(NOW + 5 * 60 * MIN).toISOString() }), NOW)).toBe('5 h')
+    expect(waitUntilStart(row({ started_at: new Date(NOW + 26 * 60 * MIN).toISOString() }), NOW)).toBe('1 day')
+  })
+
+  it('says nothing for a row whose time cannot be read', () => {
+    // Same shape as `minutesUntilStart`: an empty string would print "it opens in ,", which is worse
+    // than no number. Such a row is never folded in the first place.
+    expect(waitUntilStart(row({ started_at: 'not a time' }), NOW)).toBeNull()
+    expect(waitUntilStart({}, NOW)).toBeNull()
   })
 })

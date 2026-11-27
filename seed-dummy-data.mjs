@@ -2197,4 +2197,170 @@ describe('seed dummy data (all tables, kept in DB)', () => {
     // and the banner the hero paints, which the settings page is the other way to change.
     expect(ownerRow.picture).toBe(HERO[NAME])
   }, 300_000)
+
+  /*
+    A prayer list long enough to see the screen working.
+
+    Three fellowships and hardly any requests between them: the seven lines in the seventh test are
+    Cornerstone's, and the other two fellowships only hold whatever was typed by hand while the page
+    was being tried out. That is not enough to read the screen properly. Ten requests is what one
+    page holds, so anything under eleven never shows the pager turn over; a day filter with a single
+    match cannot be told from a filter that ignores you; and when only one address on the list is the
+    signed-in one, the mark on your own rows and the two controls that come with it get tried once.
+
+    So each fellowship gets a list here — fifteen in Grace Point, thirteen in Stream of Hope, fourteen
+    in Cornerstone — spread back over four weeks with several asking today, because that is the shape
+    a real list has: a burst on the morning people write it down, then a tail. Some people ask twice,
+    two of the lines are long enough to wrap, and the askers are always somebody on that fellowship's
+    own roster, which the pass reads from the database and checks rather than assuming.
+
+    It never clears a fellowship's rows the way the other passes do. What it takes back out is only the
+    exact lines listed below, matched on the words themselves, so a request somebody actually typed —
+    "I want to pass", whatever it is — is left standing and a second run replaces the sample list
+    instead of stacking another copy under it.
+
+      npx vitest run --config vitest.encryption.config.js seed-dummy-data -t "prayer list"
+  */
+  it('fills the prayer list of all three dummy fellowships', async () => {
+    const NAMES = ['Grace Point Fellowship', 'Stream of Hope Fellowship', 'Cornerstone Praise Fellowship']
+
+    const { data: fellowships } = await db
+      .from('community')
+      .select('community_id, name')
+      .in('name', NAMES)
+      .order('name')
+    if (fellowships?.length !== NAMES.length) {
+      throw new Error('run the earlier tests first — not all three dummy fellowships are in the database')
+    }
+
+    // Whose fellowship may ask with which address, read from the roster instead of taken from here.
+    const rosterOf = {}
+    for (const one of fellowships) {
+      const { data: roll, error } = await db
+        .from('community_members')
+        .select('email')
+        .eq('community_id', one.community_id)
+        .order('email')
+      if (error) throw new Error(`${one.name} roster: ${error.message}`)
+      if (!roll?.length) throw new Error(`${one.name} has nobody on its roster`)
+      rosterOf[one.name] = new Set(roll.map((row) => row.email))
+    }
+
+    const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`)
+    const dayOn = (offset) => new Date(today.getTime() + offset * 86_400_000).toISOString().slice(0, 10)
+
+    // [who asked, how many days back, the words] — the same shape the seventh test's list uses.
+    const ASKED = {
+      'Grace Point Fellowship': [
+        [ADMIN, 0, 'For the hospital visit on Thursday, that we find everybody at home.'],
+        ['ruth.sibiya@example.com', 0, 'Please pray for my father, he is 81 and he fell on Monday.'],
+        [
+          'sipho.mthembu@example.com', 0,
+          'For the money for the hall — we are R3 400 short and the builder is coming the week after next, so I do not know what to tell him.',
+        ],
+        ['lerato.molefe@example.com', -1, 'For my sister, she is looking for a place to stay and nothing is coming up.'],
+        ['samuel.khumalo@example.com', -2, 'Thanksgiving for a job. I start on the 1st of December.'],
+        [
+          'sibusiso.gumede@example.com', -2,
+          'For the sound system, that we stop borrowing from Stream of Hope every other Sunday.',
+        ],
+        ['mmapula.sekhuhu@example.com', -6, 'For my son at the university, he is writing exams and he cannot sleep.'],
+        ['brian.odendaal@example.com', -6, 'For wisdom about the loan. I do not want to start something I cannot finish.'],
+        ['ntsako.maluleke@example.com', -4, 'For the youth camp, that the bus holds for eight hours of road.'],
+        ['joy.mabasa@example.com', -9, 'For my mother and my marriage. They have not spoken to each other in four months.'],
+        ['tinashe.chikwava@example.com', -12, 'For my papers at home affairs, three months in and nothing is said.'],
+        ['pieter.vanwyk@example.com', -16, 'For the neighbours who lost their house to fire, that the insurance moves.'],
+        [
+          'david.zwane@example.com', -20,
+          'For the man who drives the minibus, he had a stroke last week and he has just come out of surgery.',
+        ],
+        ['grace.ndlovu@example.com', -24, 'For the sick in our fellowship — MaMbeki, Elias, and the new baby at Parktown.'],
+        ['thoko.mahlangu@example.com', -27, 'For the workers who have grown cold, that they come back before the year ends.'],
+      ],
+      'Stream of Hope Fellowship': [
+        [ADMIN, 0, 'For the sick visit on Saturday, and for the ones who cannot come out anymore.'],
+        ['martha.pillay@example.com', 0, 'Please pray with us, my husband goes under an operation on Wednesday.'],
+        ['thandeka.ngobese@example.com', 0, 'For the women\u2019s breakfast, that the hall is ready by six.'],
+        ['abdul.osman@example.com', -1, 'For my brother\u2019s papers. They have been waiting two years now.'],
+        ['kelvin.osei@example.com', -1, 'For the truck, that it passes the roadworthy the first time.'],
+        ['joshua.dlamini@example.com', -3, 'For the interview on Thursday, the second one this month.'],
+        ['thoko.mahlangu@example.com', -5, 'For three young men who have stopped coming, that somebody goes to their houses.'],
+        ['zanele.kunene@example.com', -7, 'Thanksgiving — the baby came at 3kg and both of them are well.'],
+        ['martha.pillay@example.com', -10, 'For the school fees, the second term is still not paid.'],
+        ['thandeka.ngobese@example.com', -13, 'For my landlord, that he gives us another month.'],
+        ['abdul.osman@example.com', -18, 'For the shop. Business has been slow since they closed the road.'],
+        ['kelvin.osei@example.com', -22, 'For my father in Durban, he is forgetful now and I cannot be there.'],
+        ['joshua.dlamini@example.com', -26, 'For the fellowship, that we find a hall we can afford.'],
+      ],
+      // The seven from the seventh test, kept word for word, with seven more so this list pages too.
+      'Cornerstone Praise Fellowship': [
+        ['grace.ndlovu@example.com', -1, 'Please pray with me about my mother, she is in hospital in Bloemfontein.'],
+        [ADMIN, -1, 'Thanksgiving for the hall roof — the money came in a week we had none.'],
+        ['thoko.mahlangu@example.com', -3, 'For the young people who have stopped coming to prayer meeting.'],
+        ['joshua.dlamini@example.com', -3, 'I am looking for work again. Pray that the one interview becomes something.'],
+        ['annah.mokona@example.com', -8, 'For my brother in Gqeberha, he is going through a hard marriage.'],
+        ['zanele.kunene@example.com', -8, 'For the clean-up day on Saturday, that the weather holds.'],
+        ['kelvin.osei@example.com', -11, 'For wisdom about the truck, I might have to sell it.'],
+        ['mmapula.sekhuhu@example.com', -2, 'For my daughter\u2019s matric results, they come out on Friday.'],
+        ['joshua.dlamini@example.com', -14, 'For the rent money this month, it is short again.'],
+        ['zanele.kunene@example.com', -5, 'For Sibusiso, he is working nights for three weeks and I want him protected.'],
+        [ADMIN, -4, 'For the leaders\u2019 meeting, that we come out of it agreeing on something.'],
+        ['thoko.mahlangu@example.com', 0, 'Thanksgiving — the water pipe in the hall is fixed at last.'],
+        ['grace.ndlovu@example.com', 0, 'Still for my mother in Bloemfontein. They moved her out of intensive care.'],
+        ['kelvin.osei@example.com', 0, 'For the load up to Limpopo on Monday, that it comes back paid.'],
+      ],
+    }
+
+    const rows = []
+    for (const one of fellowships) {
+      for (const [email, back, topic] of ASKED[one.name]) {
+        if (!rosterOf[one.name].has(email)) {
+          throw new Error(`${one.name}: ${email} asked for a prayer there but is not on that roster`)
+        }
+        rows.push({ community_id: one.community_id, user_email: email, date: dayOn(back), topic })
+      }
+    }
+
+    // Only these lines go, never somebody's own request. See the note above.
+    const words = ASKED['Grace Point Fellowship']
+      .concat(ASKED['Stream of Hope Fellowship'], ASKED['Cornerstone Praise Fellowship'])
+      .map(([, , topic]) => topic)
+    const { data: replaced, error: clearError } = await db
+      .from('prayer_topics')
+      .delete()
+      .in('community_id', fellowships.map((one) => one.community_id))
+      .in('topic', words)
+      .select('topic_id')
+    if (clearError) throw new Error(`cleanup prayer_topics: ${clearError.message}`)
+
+    const { error: writeError } = await db.from('prayer_topics').insert(rows)
+    if (writeError) throw new Error(`prayer_topics: ${writeError.message}`)
+
+    // Read each list back the way the page does, so a count on screen can be trusted. The sample's own
+    // lines are counted separately, because a fellowship may also be holding a request somebody typed
+    // by hand and that is not this pass's business.
+    const sample = new Set(words)
+    for (const one of fellowships) {
+      const { data: list, error } = await db
+        .from('prayer_topics')
+        .select('topic_id, user_email, date, topic')
+        .eq('community_id', one.community_id)
+        .order('date', { ascending: false })
+      if (error) throw new Error(`${one.name} read-back: ${error.message}`)
+      const rows_here = list || []
+      const written = rows_here.filter((row) => sample.has(row.topic))
+      const mine = rows_here.filter((row) => row.user_email === ADMIN).length
+      const on_the_day = rows_here.filter((row) => row.date === dayOn(0)).length
+      const days = new Set(rows_here.map((row) => row.date)).size
+      const longest = Math.max(...rows_here.map((row) => row.topic.length))
+      console.log(
+        `${one.name}: ${rows_here.length} requests (${written.length} of them seeded) over ${days} days — ` +
+          `${on_the_day} today, ${mine} from ${ADMIN}, longest ${longest} characters`,
+      )
+      expect(written.length).toBe(ASKED[one.name].length)
+      expect(mine).toBeGreaterThan(0)
+      expect(on_the_day).toBeGreaterThan(1)
+    }
+    console.log(`prayer_topics: ${rows.length} written, ${replaced?.length || 0} of the last run's replaced`)
+  }, 120_000)
 })

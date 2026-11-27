@@ -6,6 +6,7 @@ import {
   isHeldBack,
   minutesUntilStart,
   sessionStatus,
+  waitUntilStart,
 } from "../page_functions/session_timing.js";
 import QrCard from "./qr_code.jsx";
 import { pushToast } from "./toast.jsx";
@@ -331,6 +332,13 @@ export default function AttendanceControl({ community_id, admin = false }) {
     .map((one) => `${one.event_name || "A gathering"} on ${day(one.started_at)}`)
     .join(", ");
   const more = later.length > 3 ? ` and ${later.length - 3} more` : "";
+  /*
+    How long the reader actually waits for the nearest of them. `ordered` sorts what is still coming
+    soonest-first and `later` keeps that order, so the first folded row is the shortest wait — the only
+    number worth naming when one line speaks for several registers. Only a row that really is beyond
+    the window reaches this list, and such a row always has a readable time.
+  */
+  const soonest = waitUntilStart(later[0]);
 
   return (
     <section className="ac">
@@ -360,8 +368,14 @@ export default function AttendanceControl({ community_id, admin = false }) {
           ) : (
             <>
               Not shown: {plans}
-              {more} — {later.length === 1 ? "it opens" : "they open"} more than {LEAD_WORDS} from
-              now.
+              {more} —{" "}
+              {later.length === 1 ? (
+                <>it opens in {soonest}, more than {LEAD_WORDS} out.</>
+              ) : (
+                <>
+                  they are each more than {LEAD_WORDS} out; the soonest opens in {soonest}.
+                </>
+              )}
               <button type="button" onClick={() => setShowLater(true)}>
                 Show {later.length === 1 ? "it" : "them"}
               </button>

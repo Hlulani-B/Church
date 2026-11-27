@@ -70,4 +70,17 @@ export class CommunityMember {
     if (error) throw error
     return data
   }
+
+  /*
+    Walking out of a community, which is the row above's delete seen from the inside: the object it
+    returns is the link that was there, so the page can say what the person's role used to be. It is
+    its own word rather than a call straight to `remove` because the two arrive through different
+    doors — `remove` answers at /api/admin, where the caller has to be an admin of the community and
+    is naming somebody else, and this answers at /api/self, where the address can only be the
+    caller's own. Whether the fellowship can afford to lose this particular member is settled in the
+    endpoint before the delete is reached; it is a question about the community, not about the row.
+  */
+  async leave(email, community_id) {
+    return this.remove(email, community_id)
+  }
 }

@@ -13,9 +13,11 @@ import { useId, useState } from "react";
   is the real total and a search still answers for every row it matched, not just the ones shown.
 
   Because it is a hook rather than a wrapper element, it costs one line where a list already is and
-  never re-styles the page it lands on. The control carries its own css, scoped under `kp-pg`, the
-  same way the loading boxes and the back link do, so it looks the same at the bottom of a table, a
-  column of cards and a popup, none of which share a stylesheet.
+  never re-styles the page it lands on. The control carries its own css, scoped under `kp-pg` with
+  every name inside it prefixed as well — writing a rule for `.kp-pg .go` does not stop a page's
+  `.au .go` from landing on the same element — the same way the loading boxes and the back link do,
+  so it looks the same at the bottom of a table, a column of cards and a popup, none of which share a
+  stylesheet.
 
   Turning a chunk moves the screen back to where the list begins. A reader who asked for the next
   ten names wants to read them from the first, not to find themselves at the foot of a
@@ -37,14 +39,23 @@ import { useId, useState } from "react";
 // reader who is halfway down a roster should never lose the top of it.
 export const PER_PAGE = 10;
 
+/*
+  Every name below carries the `kp-` prefix, and that is the whole reason the control looks the same
+  at the bottom of every list. `go` is the primary button of this app — a dozen stylesheets define
+  `.au .go`, `.xt .go`, `.xs .go` and their like as the black box of their own form — and a descendant
+  selector of that shape reaches into anything nested inside, so the group of arrows inherited a black
+  background, white text and twenty pixels of padding, and the count line picked up the green border of
+  `.sl .say`. A shared control may not be named with a word a page already owns; `tests/pager-classes.test.js`
+  keeps that from being rediscovered as a screenshot.
+*/
 const css = `
-.kp-pg{margin:18px 0 0;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 18px;font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
-.kp-pg .say{font-size:14px;color:#666;margin:0}
-.kp-pg .go{display:flex;align-items:center;gap:10px}
-.kp-pg .step{background:#fff;color:#111;border:1px solid #bdbdbd;border-radius:2px;padding:9px 18px;font:inherit;font-size:14px;font-family:inherit;cursor:pointer}
-.kp-pg .step:hover:not(:disabled){border-color:#111}
-.kp-pg .step:disabled{opacity:.45;cursor:default}
-.kp-pg .which{font-size:14px;color:#666;min-width:104px;text-align:center}
+.kp-pg{margin:18px 0 0;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 18px;background:transparent;font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
+.kp-pg .kp-say{font-size:14px;color:#666;margin:0}
+.kp-pg .kp-go{display:flex;align-items:center;gap:10px;background:transparent}
+.kp-pg .kp-step{background:#fff;color:#111;border:1px solid #bdbdbd;border-radius:2px;padding:9px 18px;font:inherit;font-size:14px;font-family:inherit;cursor:pointer}
+.kp-pg .kp-step:hover:not(:disabled){border-color:#111;background:#fff;color:#111}
+.kp-pg .kp-step:disabled{opacity:.45;cursor:default}
+.kp-pg .kp-which{font-size:14px;color:#666;min-width:104px;text-align:center}
 `;
 
 /*
@@ -127,21 +138,21 @@ export default function Pager({ state, noun = "" }) {
   return (
     <div className="kp-pg">
       <style>{css}</style>
-      <p className="say">
+      <p className="kp-say">
         Showing {from}–{to} of {total}
         {noun ? ` ${noun}` : ""}.
       </p>
       {paging ? (
-        <span className="go">
-          <button type="button" className="step" disabled={page === 0} onClick={previous}>
+        <span className="kp-go">
+          <button type="button" className="kp-step" disabled={page === 0} onClick={previous}>
             &larr; Previous
           </button>
-          <span className="which">
+          <span className="kp-which">
             Page {page + 1} of {pages}
           </span>
           <button
             type="button"
-            className="step"
+            className="kp-step"
             disabled={page >= pages - 1}
             onClick={next}
           >

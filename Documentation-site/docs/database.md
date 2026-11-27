@@ -340,9 +340,10 @@ alter table function_paid enable row level security;
   sentence a leader types and a page prints. The write path keeps blank as a null rather than as
   the empty string: `/api/leader` trims what the page sent and turns nothing at all back into a
   null, so an empty box and a box nobody filled in are the same answer in the table.
-- `picture` is the address an admin dashboard's banner is painted from, and it arrived the same way
-  as `location`: a plain nullable text column added to a table that already had rows, so every
-  community opened before it ran has no picture and shows the band plain.
+- `picture` is the address a fellowship's banner is painted from — the admin, the leader and the member
+  dashboard each open on it, since anybody inside a community may see what it chose to look like — and
+  it arrived the same way as `location`: a plain nullable text column added to a table that already had
+  rows, so every community opened before it ran has no picture and shows the band plain.
 
   ```sql
   alter table community add column picture text;

@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Auth } from "../functions/auth.js";
 import { AdminDashboardFetch } from "../page_functions/admin_dashboard.js";
+import { CommunityFetch } from "../page_functions/community.js";
+import { heroStyle, pictureUrl } from "../page_functions/picture.js";
 import LeaderMenu from "./menu.jsx";
 import BackToCommunities from "../components/back.jsx";
 import AttendanceControl from "../components/attendance_control.jsx";
@@ -14,6 +16,7 @@ import { adminState, rememberAdmin } from "../admin/state.js";
 
 const accounts = new Auth();
 const dashboard = new AdminDashboardFetch();
+const fellowships = new CommunityFetch();
 
 const css = `
 @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;1,500&display=swap");
@@ -31,6 +34,19 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au .bar .logo{font-size:24px;text-decoration:none}
 .au .menuwrap{display:flex;align-items:center;position:relative}
 
+/*
+  The band the admin dashboard opens with, so a leader stands in the same fellowship their admin does:
+  the width of the window rather than the width of the column, the community's own picture behind it,
+  and the words lined up with everything underneath by the same measure and padding .main carries. The
+  white laid from the left is what keeps it readable — every word here would otherwise be dark on top
+  of a photograph somebody chose themselves — and the right of the picture still comes through nearly
+  whole. With no picture saved none of this happens and the plain band shows.
+*/
+.au .hero{background:#faf9f7;background-size:cover;background-position:center;border-bottom:1px solid var(--line)}
+.au .hero.picture{position:relative}
+.au .hero.picture::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,.92) 0%,rgba(255,255,255,.75) 45%,rgba(255,255,255,.25) 100%)}
+.au .hero .inner{position:relative;z-index:1;max-width:1000px;width:100%;margin:0 auto;padding:56px 56px 48px}
+
 .au .main{padding:64px 56px 96px;max-width:1000px;width:100%;margin:0 auto}
 .au .eyebrow{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 10px}
 .au h1{font-size:44px;line-height:1.1;margin:0 0 8px;text-transform:uppercase}
@@ -39,9 +55,11 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au h3{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:48px 0 16px;font-weight:600;display:flex;align-items:center;gap:10px}
 .au h3 .count{background:#111;color:#fff;border-radius:999px;font-size:12px;letter-spacing:0;padding:1px 10px}
 
-/* three ways out of the roster, with taking attendance as the main action */
+/* three ways out of the roster, with taking attendance as the main action.
+   Solid grounds and a shadow, both: the row sits over a photograph now, and a button that let the
+   picture through behind it would be a label nobody could read at a glance. */
 .au .links{display:flex;flex-wrap:wrap;gap:10px;margin:32px 0 0}
-.au .links button{background:#fff;color:#111;border:1px solid #111;border-radius:2px;padding:12px 22px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
+.au .links button{background:#ffffff;color:#111;border:1px solid #111;border-radius:2px;padding:12px 22px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;box-shadow:0 1px 3px rgba(17,17,17,.12)}
 .au .links button:hover{background:#111;color:#fff}
 .au .links button.primary{background:#111;color:#fff}
 .au .links button.primary:hover{background:#333;border-color:#333}
@@ -80,6 +98,7 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 @media (max-width:860px){
   .au .bar{padding:14px 20px}
   .au .main{padding:36px 24px 72px}
+  .au .hero .inner{padding:32px 24px 36px}
   .au h1{font-size:32px}
   .au .stats{grid-template-columns:1fr}
   .au td,.au th{font-size:14px;padding:10px 12px}
@@ -109,11 +128,10 @@ export default function LeaderDashboard() {
   const communityId = admin.community_id;
 
   /*
-    The name above the list is the one the card carried. This page does not read the community
-    row itself: that read answers with the join code, and a code is an admin's to see. So a
-    leader who arrives here without a name on the link — a bookmark, a reload after the
-    storage was cleared — is shown the address they signed in with and the list, and nothing
-    is invented for the heading.
+    The name above the list is the one the card carried. This page does not read the whole community
+    row: that row carries the join code, and a code is an admin's to see. So a leader who arrives here
+    without a name on the link — a bookmark, a reload after the storage was cleared — is shown the
+    address they signed in with and the list, and nothing is invented for the heading.
   */
   const heading = admin;
   const { name: leaderName, email: leaderEmail } = heading;
@@ -121,6 +139,32 @@ export default function LeaderDashboard() {
   useEffect(() => {
     rememberAdmin({ community_id: communityId, name: leaderName, email: leaderEmail });
   }, [communityId, leaderName, leaderEmail]);
+
+  /*
+    The band of picture the admin dashboard opens with, which is what Community settings paints and
+    what a leader was until now the only one not to see. It comes off the caller's own list of
+    fellowships rather than off the community row, because that list carries name and picture for the
+    groups this address belongs to and no others, and answers to a member or a leader as it stands. A
+    community with nothing saved, or with something in the column that is not an http address, leaves
+    the plain band — the same banner minus the photograph, checked by pictureUrl on the way in.
+  */
+  const [picture, setPicture] = useState("");
+  useEffect(() => {
+    if (!communityId) return;
+    let alive = true;
+    fellowships
+      .getCommunities()
+      .then((groups) => {
+        if (!alive) return;
+        const one = (groups || []).find((each) => each.community_id === communityId);
+        setPicture(pictureUrl(one?.picture));
+      })
+      // A banner that will not read is no banner at all; the roster underneath is this page's work.
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [communityId]);
 
   useEffect(() => {
     return accounts.onChange((user) => {
@@ -211,60 +255,70 @@ export default function LeaderDashboard() {
         <BackToCommunities />
       </div>
 
+      {/*
+        The fellowship's own banner, from the top bar down past the buttons and no further: the
+        attendance control and the roster underneath start on white again. What is painted behind it is
+        the address Community settings saved, checked before it is used as a background, so a value that
+        is not a real picture leaves the plain band rather than a broken one.
+      */}
+      <section className={`hero${picture ? " picture" : ""}`} style={heroStyle(picture)}>
+        <div className="inner">
+          <p className="eyebrow">Leader</p>
+          <h1 className="serif">{heading.name || "This community"}</h1>
+          <p className="sub">{admin.email}</p>
+
+          {/* The page-to-page buttons come first, and they come first inside the banner the way they
+              do on the admin's screen. Attendance and the roster below get long, and a leader who
+              wants to leave this page should not have to scroll past either to find the way out. */}
+          {communityId && (
+            <div className="links">
+              <button
+                className="primary"
+                type="button"
+                onClick={() => navigate("/take-attendance", { state: { ...heading, role: "leader" } })}
+              >
+                Take attendance
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/leader-attendance", { state: heading })}
+              >
+                View attendance
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/leader-testimonies", { state: heading })}
+              >
+                View testimonies
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/prayer-topics", { state: { ...heading, role: "leader" } })}
+              >
+                Prayer topics
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/servings", { state: { ...heading, role: "leader" } })}
+              >
+                Servings
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/functions", { state: { ...heading, role: "leader" } })}
+              >
+                Functions
+              </button>
+              {/* A leader is invited to a function the same way a member is, and answers it the same
+                  way. This button goes to the list of what is still to come; the Functions button
+                  above it is the register, where the answers being read are everybody else's. */}
+              <AvailableFunctions state={{ ...heading, role: "leader" }} />
+            </div>
+          )}
+        </div>
+      </section>
+
       <main className="main">
-        <p className="eyebrow">Leader</p>
-        <h1 className="serif">{heading.name || "This community"}</h1>
-        <p className="sub">{admin.email}</p>
-
-        {/* The page-to-page buttons come first. Attendance and the roster below get long, and
-            a leader who wants to leave this screen should not have to scroll past either to
-            find the way out. */}
-        {communityId && (
-          <div className="links">
-            <button
-              className="primary"
-              type="button"
-              onClick={() => navigate("/take-attendance", { state: { ...heading, role: "leader" } })}
-            >
-              Take attendance
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/leader-attendance", { state: heading })}
-            >
-              View attendance
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/leader-testimonies", { state: heading })}
-            >
-              View testimonies
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/prayer-topics", { state: { ...heading, role: "leader" } })}
-            >
-              Prayer topics
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/servings", { state: { ...heading, role: "leader" } })}
-            >
-              Servings
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/functions", { state: { ...heading, role: "leader" } })}
-            >
-              Functions
-            </button>
-            {/* A leader is invited to a function the same way a member is, and answers it the same
-                way. This button goes to the list of what is still to come; the Functions button
-                above it is the register, where the answers being read are everybody else's. */}
-            <AvailableFunctions state={{ ...heading, role: "leader" }} />
-          </div>
-        )}
-
         {/* Attendance comes next: the notice (which carries its own PIN box) and the leader's own
             control sit above the roster, so a leader sees a gathering being counted the moment
             the page opens rather than after the people list. */}

@@ -11,7 +11,7 @@ const DASHBOARDS = {
 export class CommunityFetch {
   /*
     God's `community` `memberOf`, which reads community_members for the email and then
-    the names from community. Returns [{ community_id, name }], or [] for someone with
+    the names from community. Returns [{ community_id, name, picture }], or [] for someone with
     no links. Leave `email` empty from a page: the server answers a browser with the
     address on its own id token, so asking about another person only works with
     GOD_SERVER_KEY.
@@ -82,6 +82,24 @@ export class CommunityFetch {
       session_id,
       pin: digits,
     })
+  }
+
+  /*
+    Walking out of one fellowship. The request names a community and nothing else — no address, no
+    role — because /api/self reads the person leaving off the id token this browser carries and refuses
+    the two people who would strand the group: anybody not in it, and the only admin of it, who has to
+    make somebody else an admin first.
+
+    The join code is left alone, so the fellowship keeps working for the people still in it, and the
+    person who left could walk back in with those six characters if they were told them again. That is
+    what leaving means here: the record stays, the place in the roster does not. Their testimonies are
+    the one thing this cannot reach, because the address on those rows is ciphertext and only this
+    browser's key can say which ones are theirs — so the page asks about those separately, and goes
+    through TestimoniesFetch.deleteMine once this write has been allowed.
+  */
+  async leaveCommunity(community_id) {
+    if (!community_id) throw new Error('community_id is required')
+    return callGod('member', { function: 'leave', community_id })
   }
 
   /*

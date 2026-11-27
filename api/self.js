@@ -25,10 +25,11 @@ import {
   about the caller, whose address the Firebase token forces over anything in the body.
 
   Reading the roster and the attendance, and opening or managing a check-in session, live in
-  /api/leader; changing who is in a community, its roles and its join code live in /api/admin. So does
+  /api/leader; changing who is in a community, its roles and its join code live in /api/admin, as does
   the functions page's register, which counts everybody's answers under a function rather than one
-  person's. A request that belongs over there is refused here by the whitelist below, so a browser
-  cannot reach a leader or admin power by guessing an endpoint.
+  person's. Taking yourself out of a community is here, because that write is about the caller rather
+  than about the fellowship. A request that belongs over there is refused here by the whitelist below,
+  so a browser cannot reach a leader or admin power by guessing an endpoint.
 */
 
 // What a signed-in browser may do at this tier, and nothing else.
@@ -37,7 +38,7 @@ const SELF_ACTIONS = {
   // 'join' is the typed code; 'join_at_session' is the QR scan, which proves its way in with the
   // PIN of a check-in that is open right now rather than with a code the person was handed.
   community: ['memberOf', 'create', 'join', 'join_at_session'],
-  member: ['create', 'find'],
+  member: ['create', 'find', 'leave'],
   // Only the names of the people who lead, never the whole roster — that stays a leader's read.
   admin: ['hosts'],
   event: ['record', 'checkin'],
@@ -400,6 +401,42 @@ export default async function handler(req, res) {
           .json({ error: 'that community already has members, so only the server key can add one' })
       }
       params = { ...params, role: 'admin' }
+    }
+    /*
+      Leaving a community, which is the removal an admin does to somebody else done to your own row.
+      The address needs no checking because it has none: `params.email` was written from the id token
+      above, and the body's version of it was thrown away with it, so this cannot take a neighbour out
+      of a fellowship or drop somebody from the wrong one. Two things are refused before the link is
+      deleted. Nobody leaves a community they are not in, which would otherwise answer as a success
+      having changed nothing. And the last admin cannot walk out — the same refusal /api/admin makes
+      when somebody tries to take an only admin's role away, because a community left with no admin
+      has nobody who can read its roster, change its join code or clear its record, and no way back
+      except the server key. Making one more person an admin is the way through, and it takes a minute.
+
+      Everything the person recorded stays. Their attendance, their servings, the prayers they asked
+      for and their name on the users row are all still there afterwards, and their testimonies stay
+      unless they ask for those back too, which is a question the page asks and this endpoint does not
+      answer: the address on a testimony row is ciphertext, and only the browser holding the key can
+      say which rows are anybody's.
+    */
+    if (action === 'member' && params.function === 'leave') {
+      if (!params.community_id) {
+        return res.status(400).json({ error: 'params.community_id is required to leave a community' })
+      }
+      const own = await links.find(email, params.community_id)
+      if (!own) {
+        return res.status(400).json({ error: 'you are not a member of that community' })
+      }
+      if (own.role === 'admin') {
+        const everyone = await links.all({ community_id: params.community_id })
+        if (everyone.filter((one) => one.role === 'admin').length <= 1) {
+          return res.status(403).json({
+            error:
+              'you are the only admin here, so make somebody else an admin before you leave — a community with nobody to run it cannot change its code or clear its records',
+          })
+        }
+      }
+      params = { function: 'leave', community_id: params.community_id, email }
     }
     /*
       Whether there is anything to check in to, which is what a dashboard asks on a timer so the

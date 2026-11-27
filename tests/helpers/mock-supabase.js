@@ -15,6 +15,9 @@ export function makeSupabaseMock({
   function_attending = [],
   function_paid = [],
   feedback = [],
+  testimony = [],
+  community = [],
+  community_members = [],
   insertReturns = null,
   singleAsRow = false,
 } = {}) {
@@ -29,6 +32,7 @@ export function makeSupabaseMock({
       order: null,
       orders: [],
       limit: null,
+      range: null,
       insert: null,
       upsert: null,
       onConflict: null,
@@ -68,6 +72,12 @@ export function makeSupabaseMock({
         return b
       },
       limit(n) { state.limit = n; return b },
+      /*
+        PostgREST's window, written as the pair offset and to rather than offset and count. A read that
+        walks a table page by page only means something if the stand-in answers the window, so a test can
+        seed three pages and watch the walk stop when one comes back short.
+      */
+      range(from, to) { state.range = [from, to]; return b },
       single() { state.single = true; return b },
       maybeSingle() { state.maybeSingle = true; return b },
       // The real Supabase PostgrestBuilder is awaited directly (thenable) — so we mirror that.
@@ -108,7 +118,15 @@ export function makeSupabaseMock({
                   ? function_paid
                   : table === 'feedback'
                     ? feedback
-                    : []
+                    : table === 'testimony'
+                      ? testimony
+                      : table === 'community'
+                        ? community
+                        : table === 'community_members'
+                          ? community_members
+                          : []
+    // A windowed read gets its slice of the seeded table; nothing else changes which rows are held.
+    const windowed = state.range ? rows.slice(state.range[0], state.range[1] + 1) : rows
     /*
       PostgREST's filtered aggregate, which is how the register's three tallies are made: an embed
       named in the select string (`going:function_attending(count)`) and the rows it counts named by a
@@ -121,7 +139,7 @@ export function makeSupabaseMock({
     if (tallies.length) {
       const under = { function_attending, function_paid }
       return {
-        data: rows.map((parent) => {
+        data: windowed.map((parent) => {
           const counted = {}
           for (const [, alias, child] of tallies) {
             const gates = state.filters.filter((one) => one.col.startsWith(`${alias}.`))
@@ -148,9 +166,9 @@ export function makeSupabaseMock({
       turns it on has to hold only the rows the read is meant to find, because nothing here filters.
     */
     if (singleAsRow && (state.single || state.maybeSingle)) {
-      return { data: rows[0] ?? null, error: null }
+      return { data: windowed[0] ?? null, error: null }
     }
-    return { data: rows, error: null }
+    return { data: windowed, error: null }
   }
 
   return {

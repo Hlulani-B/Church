@@ -57,10 +57,15 @@ export class Community {
     return data
   }
 
-  // Every community a person belongs to: their ids and roles out of community_members,
-  // then the names from this table. Returns [{ community_id, name, role }]. The role is
-  // the caller's own — a page that already knows which community it is about has no use
-  // for anybody else's, and picking the link up here saves a second read further down.
+  /*
+    Every community a person belongs to: their ids and roles out of community_members, then the names
+    and the banner picture from this table. Returns [{ community_id, name, picture, role }]. The role
+    is the caller's own — a page that already knows which community it is about has no use for anybody
+    else's, and picking the link up here saves a second read further down. `picture` is on here because
+    every dashboard opens on the fellowship's banner, and this read answers for the caller's own
+    communities only, so it cannot paint a banner for a group they are not in. `join_id` stays off it,
+    which is why the whole row is still an admin's `find`.
+  */
   async memberOf(email) {
     if (!email) throw new Error('email is required')
     const { data: links, error: linksError } = await this.client
@@ -74,7 +79,7 @@ export class Community {
 
     const { data, error } = await this.client
       .from(TABLE)
-      .select('community_id, name')
+      .select('community_id, name, picture')
       .in('community_id', ids)
     if (error) throw error
     const role_of = Object.fromEntries(links.map((one) => [one.community_id, one.role]))

@@ -39,7 +39,7 @@ Three pages of that are worth dwelling on:
 
 | Endpoint | Who it is for | Example calls |
 | --- | --- | --- |
-| `/api/self` | any signed-in member | check in with a PIN, join a community by code or by scanning an open check-in, record absence, list your own communities, submit feedback, read the whole feedback pile, see what your fellowship still has planned and answer it |
+| `/api/self` | any signed-in member | check in with a PIN, join a community by code or by scanning an open check-in, record absence, list your own communities, take yourself off one of their rosters, submit feedback, read the whole feedback pile, see what your fellowship still has planned and answer it |
 | `/api/leader` | a `leader` or `admin` of the community | open a check-in, read the roster, read attendance for a gathering, plan a function and read who has answered it |
 | `/api/admin` | an `admin` of the community | assign a role, remove a member, change the join code |
 

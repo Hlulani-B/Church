@@ -57,3 +57,25 @@ export function isHeldBack(one, { now = Date.now(), lead = LEAD_MINUTES } = {}) 
   const ahead = minutesUntilStart(one, now)
   return ahead !== null && ahead > lead
 }
+
+/*
+  How far off a held-back register actually is, in the words the collapsed line prints.
+
+  The line used to give the rule alone — "it opens more than two hours from now" — and that is true of
+  a register nine days out, which is why it read like a clock nobody had set: a reader on the 27th is
+  told something about two hours. The wait is the useful half, so it comes first and the window is
+  only the reason the card is folded.
+
+  Rounded the way somebody would say it in a room: minutes inside the hour, hours inside the day, days
+  beyond that. Null for a row whose time cannot be read; `isHeldBack` already refuses to fold such a
+  row, so a line that prints this has a number to print.
+*/
+export function waitUntilStart(one, now = Date.now()) {
+  const ahead = minutesUntilStart(one, now)
+  if (ahead === null) return null
+  if (ahead < 60) return `${ahead} min`
+  const hours = Math.round(ahead / 60)
+  if (hours < 24) return `${hours} h`
+  const days = Math.round(hours / 24)
+  return `${days} ${days === 1 ? 'day' : 'days'}`
+}

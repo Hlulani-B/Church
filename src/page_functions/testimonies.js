@@ -404,6 +404,78 @@ export class TestimoniesFetch {
   }
 
   /*
+    Every sharing this address wrote in one community, asked of the table directly rather than through
+    the paged read above. Two differences, both on purpose. The rows are not narrowed to what the
+    viewer may read: an author who kept their own testimony to a list of names they are not on is still
+    its author, and taking it back is not something a permission they set years ago can block. And only
+    the id and the address are fetched — the words themselves, encrypted or a file's address, are none
+    of this question's business.
+
+    The walk is over whole pages until one comes back short, so a community with four testimonies pays
+    one read and a community with four thousand still finishes.
+  */
+  async myTestimonies(community_id, email) {
+    if (!community_id) throw new Error('community_id is required')
+    if (!email) {
+      throw new Error('Nobody is signed in, so there is nothing to look for.')
+    }
+    const mine = String(email).trim().toLowerCase()
+    const found = []
+    for (let page = 0; page < PAGES; page += 1) {
+      const { data, error } = await this.client
+        .from('testimony')
+        .select('testimony_id, user_email')
+        .eq('community_id', community_id)
+        .order('testimony_id')
+        .range(page * PAGE, page * PAGE + PAGE - 1)
+      if (error) throw new Error(error.message)
+      const opened = await Promise.all(
+        data.map(async (row) => ({
+          testimony_id: row.testimony_id,
+          author: String(await decryptText(row.user_email) || '').trim().toLowerCase(),
+        })),
+      )
+      found.push(...opened.filter((one) => one.author === mine))
+      if (data.length < PAGE) break
+    }
+    return found
+  }
+
+  /*
+    Taking back everything this address shared in one community, and the files that were the sharing
+    when a sharing was a picture or a document — the route behind `deleteTestimony` drops the object
+    once it has the row, so no page ever has to name a bucket path.
+
+    This is the half of leaving a fellowship that cannot be done anywhere else. A testimony row carries
+    its author as ciphertext written with a key that never leaves this browser, and AES-GCM gives a
+    fresh iv every time, so a server cannot be told "delete what ana@x.co shared" — there is nothing to
+    compare the address against. So the rows are read here, opened here, matched here, and sent on one
+    at a time through the same function the testimony card's own delete button uses. That reuse is the
+    point: the rule that only the sharer can take a sharing down runs on this path too, rather than a
+    leave being a weaker door into somebody else's rows.
+
+    One refusal does not stop the rest, because a person walking out should not have to sit and click
+    at forty testimonies one at a time to finish what they started; what came back is counted and said.
+  */
+  async deleteMine({ community_id, email }) {
+    const rows = await this.myTestimonies(community_id, email)
+    const answer = { testimonies: 0, files: 0, filesLeft: 0, failed: 0 }
+    for (const one of rows) {
+      try {
+        const done = await this.deleteTestimony({ testimony_id: one.testimony_id, email })
+        answer.testimonies += 1
+        if (done?.file) {
+          if (done.file.taken) answer.files += 1
+          else answer.filesLeft += 1
+        }
+      } catch {
+        answer.failed += 1
+      }
+    }
+    return answer
+  }
+
+  /*
     The four columns an export is written out of. The names come from the roster, so somebody
     who has since been taken out of the community has no name to write, and their address is
     not a substitute for it: an exported file is the kind of thing that leaves a room, so the

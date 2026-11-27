@@ -80,7 +80,7 @@ export default function Menu({ heading = "Menu", items = [], guideRole }) {
     navigate(state ? { pathname: to, state } : to);
   }
 
-  async function leave() {
+  async function signOut() {
     setOpen(false);
     await accounts.signOut();
     // The next person to sign in on this browser is not the one who left, so the
@@ -121,7 +121,10 @@ export default function Menu({ heading = "Menu", items = [], guideRole }) {
           ))}
           <button type="button" onClick={() => go("/feedback")}>Feedback</button>
           <button type="button" onClick={() => go("/profile")}>Profile</button>
-          <button className="ghost" type="button" onClick={leave}>Log out</button>
+          {/* Sitting beside Profile rather than among a role's own tools, because leaving is something
+              every member can do and only an admin can undo. */}
+          <button type="button" onClick={() => go("/leave-community")}>Leave a community</button>
+          <button className="ghost" type="button" onClick={signOut}>Log out</button>
         </nav>
       </aside>
 

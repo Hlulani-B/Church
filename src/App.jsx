@@ -25,6 +25,7 @@ import AvailableFunctionsPage from './pages/available_functions.jsx'
 import RsvpPage from './pages/rsvp.jsx'
 import DeleteCommunitySignInPage from './pages/delete_community.jsx'
 import DeleteCommunityConfirmPage from './pages/delete_community_confirm.jsx'
+import LeaveCommunityPage from './pages/leave_community.jsx'
 import ToastHost from './components/toast.jsx'
 
 function NotFound() {
@@ -74,6 +75,9 @@ function App() {
             leave open, and both are gated again on the server. */}
         <Route path="/delete-community" element={<DeleteCommunitySignInPage />} />
         <Route path="/delete-community/confirm" element={<DeleteCommunityConfirmPage />} />
+        {/* A leaving rather than a deleting: one roster row goes and the register stays, which is why
+            it gets its own screen instead of another button on the delete-everything pair. */}
+        <Route path="/leave-community" element={<LeaveCommunityPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       {/* One host, mounted above the router so a check-in landing on any page can push a toast

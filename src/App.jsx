@@ -9,6 +9,7 @@ import ProfilePage from './pages/profile.jsx'
 import FeedbackPage from './pages/feedback.jsx'
 import FeedbackList from './pages/feedback_list.jsx'
 import AdminDashboard from './admin/Dashboard.jsx'
+import CommunitySettingsPage from './admin/settings.jsx'
 import AdminTestimonies from './admin/testimonies.jsx'
 import AdminAttendance from './admin/attendance.jsx'
 import LeaderDashboard from './leader/Dashboard.jsx'
@@ -18,6 +19,7 @@ import MemberDashboard from './member/Dashboard.jsx'
 import MemberTestimonies from './member/testimonies.jsx'
 import TakeAttendance from './pages/take_attendance.jsx'
 import ServingsPage from './pages/servings.jsx'
+import PrayerTopicsPage from './pages/prayer_topics.jsx'
 import FunctionsPage from './pages/functions.jsx'
 import AvailableFunctionsPage from './pages/available_functions.jsx'
 import RsvpPage from './pages/rsvp.jsx'
@@ -48,6 +50,9 @@ function App() {
         <Route path="/feedback" element={<FeedbackPage />} />
         <Route path="/feedback/all" element={<FeedbackList />} />
         <Route path="/admin-dashboard" element={<AdminDashboard />} />
+        {/* The community's own name and picture, on a page of its own: both belong to the fellowship
+            as a whole rather than to today's gathering, and the dashboard is full of today's. */}
+        <Route path="/admin-settings" element={<CommunitySettingsPage />} />
         <Route path="/admin-testimonies" element={<AdminTestimonies />} />
         <Route path="/admin-attendance" element={<AdminAttendance />} />
         <Route path="/leader-dashboard" element={<LeaderDashboard />} />
@@ -57,6 +62,10 @@ function App() {
         <Route path="/member-testimonies" element={<MemberTestimonies />} />
         <Route path="/take-attendance" element={<TakeAttendance />} />
         <Route path="/servings" element={<ServingsPage />} />
+        {/* What the fellowship is being asked to pray for, and the box to add to it. Every role in a
+            community reads the same list, because a prayer request is made to the fellowship rather
+            than to whoever runs it. */}
+        <Route path="/prayer-topics" element={<PrayerTopicsPage />} />
         <Route path="/functions" element={<FunctionsPage />} />
         <Route path="/available-functions" element={<AvailableFunctionsPage />} />
         <Route path="/rsvp" element={<RsvpPage />} />

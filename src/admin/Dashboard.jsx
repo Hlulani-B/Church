@@ -8,6 +8,7 @@ import AttendanceControl from "../components/attendance_control.jsx";
 import SessionLive from "../components/session_live.jsx";
 import AvailableFunctions from "../components/available_functions.jsx";
 import ExtraMembers from "../components/extra_members.jsx";
+import { heroStyle, pictureUrl } from "../page_functions/picture.js";
 import LoadingBoxes from "../components/loading_boxes.jsx";
 import Pager, { usePager, PER_PAGE } from "../components/pager.jsx";
 import { adminState, rememberAdmin } from "./state.js";
@@ -32,6 +33,25 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au .bar .logo{font-size:24px;text-decoration:none}
 .au .menuwrap{display:flex;align-items:center;position:relative}
 
+/*
+  The banner the fellowship opens with: the ADMIN label, its name, the address whose dashboard this
+  is, the wavy line under it and the whole row of buttons — one block, painted over the community's
+  own picture. It runs the width of the window rather than the width of the column below it, because
+  a photograph shut inside a 1400px box with white either side of it reads as a thumbnail and not as
+  the face of a fellowship. The words still line up with everything underneath: .hero .inner carries
+  the same measure and the same side padding as .main, so only the background is wider.
+
+  The white laid from the left is what keeps it readable. Every word here is dark on top of a picture
+  somebody chose themselves, so the wash gives the eyebrow, the name and the buttons a page-white
+  ground to sit on and lets the right of the photograph come through nearly whole — you should still
+  be able to tell it is a room and not a grey band. With no picture saved none of this happens and
+  the plain band shows, which is the same banner minus the photo rather than an empty frame.
+*/
+.au .hero{background:#faf9f7;background-size:cover;background-position:center;border-bottom:1px solid var(--line)}
+.au .hero.picture{position:relative}
+.au .hero.picture::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(255,255,255,.92) 0%,rgba(255,255,255,.75) 45%,rgba(255,255,255,.25) 100%)}
+.au .hero .inner{position:relative;z-index:1;max-width:1400px;width:100%;margin:0 auto;padding:56px 56px 48px}
+
 .au .main{padding:64px 56px 96px;max-width:1400px;width:100%;margin:0 auto}
 .au .eyebrow{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 10px}
 .au h1{font-size:44px;line-height:1.1;margin:0 0 8px;text-transform:uppercase}
@@ -40,12 +60,14 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 .au h3{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:48px 0 16px;font-weight:600;display:flex;align-items:center;gap:10px}
 .au h3 .count{background:#111;color:#fff;border-radius:999px;font-size:12px;letter-spacing:0;padding:1px 10px}
 
-/* three ways out of the roster, with taking attendance as the main action */
+/* three ways out of the roster, with taking attendance as the main action.
+   Solid grounds, both kinds: the row sits over a photograph now, so a button that let the picture
+   through behind it would be a label nobody could read at a glance. */
 .au .links{display:flex;flex-wrap:wrap;gap:10px;margin:32px 0 0}
-.au .links button{background:#fff;color:#111;border:1px solid #111;border-radius:2px;padding:12px 22px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
-.au .links button:hover{background:#111;color:#fff}
-.au .links button.primary{background:#111;color:#fff}
-.au .links button.primary:hover{background:#333;border-color:#333}
+.au .links button{background:#FFFFFF;color:#111111;border:1px solid #111111;border-radius:2px;padding:12px 22px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;box-shadow:0 1px 3px rgba(17,17,17,.12)}
+.au .links button:hover{background:#111111;color:#fff}
+.au .links button.primary{background:#111111;color:#fff;border-color:#111111}
+.au .links button.primary:hover{background:#333333;border-color:#333333}
 
 .au .note{background:#f4f4f4;border-left:3px solid #111;padding:12px 16px;font-size:14px;margin:22px 0 0}
 .au .note.bad{border-left-color:#a11111}
@@ -132,6 +154,7 @@ html,body{margin:0;padding:0;background:#fff;display:block;min-width:0}
 @media (max-width:860px){
   .au .bar{padding:14px 20px}
   .au .main{padding:36px 24px 72px}
+  .au .hero .inner{padding:32px 24px 36px}
   .au h1{font-size:32px}
   .au .stats{grid-template-columns:1fr}
   .au td,.au th{font-size:14px;padding:10px 12px}
@@ -232,6 +255,12 @@ export default function AdminDashboard() {
   const heading = { ...admin, name: shown?.name || admin.name };
   const { name: adminName, email: adminEmail } = heading;
   const joinCode = shown?.join_id || "";
+  /*
+    The banner's picture, checked on the way in. Anything the row holds that is not an http(s)
+    address is treated as no picture at all, so a value typed into the table by hand cannot reach
+    this page's own styling through a background rule.
+  */
+  const picture = pictureUrl(shown?.picture);
 
   useEffect(() => {
     rememberAdmin({ community_id: communityId, name: adminName, email: adminEmail });
@@ -451,66 +480,86 @@ export default function AdminDashboard() {
         <BackToCommunities />
       </div>
 
+      {/*
+        The fellowship's own banner, from the top bar down past the buttons and no further: the
+        members list underneath starts on white again. What is painted behind it is whatever address
+        `community.picture` holds, and the address is checked before it is used as a background, so a
+        value that is not a real picture leaves the plain band rather than a broken one. Reachable
+        from the menu on this page, and from Community settings.
+      */}
+      <section
+        className={`hero${picture ? " picture" : ""}`}
+        style={heroStyle(picture)}
+      >
+        <div className="inner">
+          <p className="eyebrow">Admin</p>
+          {/*
+            This page is about one community, so its name is the biggest thing here rather
+            than a small label over the list. It is the name the card carried, or the one this
+            page just read, whichever is known — the heading does not wait for the read.
+          */}
+          <h1 className="serif">{heading.name || "This community"}</h1>
+          <p className="sub">{admin.email}</p>
+
+          {/* The page-to-page buttons sit above everything else. This is a busy screen — a live
+              check-in card, the admin's own attendance control, the roster, the join code — and
+              needing to scroll past all of that to reach "View testimonies" made the buttons
+              feel like they belonged to a page further down rather than this one. */}
+          {communityId && (
+            <div className="links">
+              <button
+                className="primary"
+                type="button"
+                onClick={() => navigate("/take-attendance", { state: { ...heading, role: "admin" } })}
+              >
+                Take attendance
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/admin-attendance", { state: heading })}
+              >
+                View attendance
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/admin-testimonies", { state: heading })}
+              >
+                View testimonies
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/prayer-topics", { state: { ...heading, role: "admin" } })}
+              >
+                Prayer topics
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/feedback/all", { state: { ...heading, role: "admin" } })}
+              >
+                Read feedback
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/servings", { state: { ...heading, role: "admin" } })}
+              >
+                Servings
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/functions", { state: { ...heading, role: "admin" } })}
+              >
+                Functions
+              </button>
+              {/* Planning a function and being invited to one are different buttons: the one above
+                  reads everybody's answers, this one is the admin's own standing under the plans that
+                  have not happened yet, exactly as a member sees them. */}
+              <AvailableFunctions state={{ ...heading, role: "admin" }} />
+            </div>
+          )}
+        </div>
+      </section>
+
       <main className="main">
-        <p className="eyebrow">Admin</p>
-        {/*
-          This page is about one community, so its name is the biggest thing here rather
-          than a small label over the list. It is the name the card carried, or the one this
-          page just read, whichever is known — the heading does not wait for the read.
-        */}
-        <h1 className="serif">{heading.name || "This community"}</h1>
-        <p className="sub">{admin.email}</p>
-
-        {/* The page-to-page buttons sit above everything else. This is a busy screen — a live
-            check-in card, the admin's own attendance control, the roster, the join code — and
-            needing to scroll past all of that to reach "View testimonies" made the buttons
-            feel like they belonged to a page further down rather than this one. */}
-        {communityId && (
-          <div className="links">
-            <button
-              className="primary"
-              type="button"
-              onClick={() => navigate("/take-attendance", { state: { ...heading, role: "admin" } })}
-            >
-              Take attendance
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/admin-attendance", { state: heading })}
-            >
-              View attendance
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/admin-testimonies", { state: heading })}
-            >
-              View testimonies
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/feedback/all", { state: { ...heading, role: "admin" } })}
-            >
-              Read feedback
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/servings", { state: { ...heading, role: "admin" } })}
-            >
-              Servings
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/functions", { state: { ...heading, role: "admin" } })}
-            >
-              Functions
-            </button>
-            {/* Planning a function and being invited to one are different buttons: the one above
-                reads everybody's answers, this one is the admin's own standing under the plans that
-                have not happened yet, exactly as a member sees them. */}
-            <AvailableFunctions state={{ ...heading, role: "admin" }} />
-          </div>
-        )}
-
         {/* Attendance comes next: the notice (which carries its own PIN box) and the admin's own
             control sit above the roster and join code, so the whole picture of the room is the
             first real content here. */}

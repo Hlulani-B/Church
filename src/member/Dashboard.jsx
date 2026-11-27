@@ -246,6 +246,12 @@ export default function MemberDashboard() {
             </button>
             <button
               type="button"
+              onClick={() => navigate("/prayer-topics", { state: { ...heading, role: "member" } })}
+            >
+              Prayer topics
+            </button>
+            <button
+              type="button"
               onClick={() => navigate("/feedback", { state: { ...heading, role: "member" } })}
             >
               Feedback

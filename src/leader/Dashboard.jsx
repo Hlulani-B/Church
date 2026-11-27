@@ -242,6 +242,12 @@ export default function LeaderDashboard() {
             </button>
             <button
               type="button"
+              onClick={() => navigate("/prayer-topics", { state: { ...heading, role: "leader" } })}
+            >
+              Prayer topics
+            </button>
+            <button
+              type="button"
               onClick={() => navigate("/servings", { state: { ...heading, role: "leader" } })}
             >
               Servings

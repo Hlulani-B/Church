@@ -37,6 +37,7 @@ const CONTENT = {
       { t: "Add or remove people", d: "The Roster card lists everybody. Someone who walks in during a service just scans the QR — the open check-in adds them as a member, so you never have to find a code. Anyone who did not attend still needs one: give them the join code and they add themselves. Use Remove to take somebody off, and change a role from the same row." },
       { t: "Reset the join code", d: "Only if it has leaked. The old code stops working immediately, and the new one is what anybody who joins outside a service will need. A scan during an open check-in never uses the code, so resetting it does not lock the door behind a walk-up." },
       { t: "Approve testimonies", d: "There is no approval queue yet — anything a member posts appears on the community's list straight away. What you can do today is export the pile to Excel or PDF, and search it by name and date." },
+      { t: "Prayer topics", d: "The list is the fellowship's own — anybody in it can ask for a prayer and only the person who asked can reword it or take it back, so there is nothing for you to moderate. Deleting a community's data takes these rows, and the address on each one, with it." },
       { t: "Feedback is above the community", d: "The pile is app-wide, not per-fellowship, and every signed-in person can read it — including you, from \"Read feedback\" on this page. Addresses are stored on the rows and printed in an export, never on the page. What you write there is signal for whoever runs Kopano, not for your members." },
     ],
   },
@@ -49,6 +50,7 @@ const CONTENT = {
       { t: "Cancel early", d: "Cancel from the same card if the room emptied or the service ran long. Cancellation is one-way — a called-off session cannot be reopened." },
       { t: "Nobody needs a code", d: "Someone who walks in cold scans the same QR as everybody else. They are given an account on that page, added to the community as a member, and marked present — no join code to hunt down, because the open check-in is what proves they are in the room." },
       { t: "Read the register", d: "Attendance shows everybody recorded for a gathering, present and absent together, and it names who opened each." },
+      { t: "Know what to pray for", d: "“Prayer topics” is the fellowship's list, open to everyone in it: anybody can ask, and only the one who asked can change or withdraw a request. Nothing about the page is leader-only — it is here so the meeting can be led with what people actually need in hand." },
     ],
   },
   member: {
@@ -60,6 +62,7 @@ const CONTENT = {
       { t: "Once marked, the card is gone", d: "You cannot check in twice at the same gathering. If you change your mind about a future Sunday, use “Not attending”." },
       { t: "Send an apology in advance", d: "Not coming? Leave a note against that day. It is filed separately from attendance and does not count as a mark." },
       { t: "Share a testimony", d: "Post what God is doing in your life and it appears on the community's list for everyone there to read. There is no approval step today, so write it the way you would say it out loud." },
+      { t: "Ask for prayer", d: "One or two lines on the “Prayer topics” page and it is on the fellowship's list straight away — again nothing to approve. The list shows the words and the day, never the address that asked. Yours is the only one marked, and only you can reword it or take it back." },
     ],
   },
   communities: {

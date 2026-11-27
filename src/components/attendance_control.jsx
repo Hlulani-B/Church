@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { SessionFetch } from "../page_functions/session.js";
 import { clock } from "../page_functions/place.js";
+import {
+  LEAD_MINUTES,
+  isHeldBack,
+  minutesUntilStart,
+  sessionStatus,
+} from "../page_functions/session_timing.js";
 import QrCard from "./qr_code.jsx";
 import { pushToast } from "./toast.jsx";
 import Pager, { usePager, PER_PAGE } from "./pager.jsx";
@@ -15,6 +21,10 @@ const sessions = new SessionFetch();
 */
 const LISTEN_EVERY = 15000;
 
+// The lead window in the words the collapsed line uses, so the sentence cannot drift away from the
+// rule it is describing.
+const LEAD_WORDS = LEAD_MINUTES >= 60 ? `${LEAD_MINUTES / 60} hours` : `${LEAD_MINUTES} minutes`;
+
 // A day and a time together, so a session opened for later today still says which day it is.
 function day(value) {
   const date = new Date(value);
@@ -23,14 +33,13 @@ function day(value) {
     : date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
-// Which side of its own window a session sits on, read against this device's clock. The moment is
-// taken here rather than in the card so a component render stays free of the impure clock read.
-function statusOf(one) {
-  const now = Date.now();
-  if (one.cancel === true) return "cancelled";
-  if (new Date(one.started_at).getTime() > now) return "upcoming";
-  if (new Date(one.ended_at).getTime() < now) return "ended";
-  return "open";
+// How soon a register that has not opened yet will, said the way somebody would say it in a room.
+// Only for the same day: a card for a Sunday nine days off already prints the date, and "opens in
+// 216 h" is arithmetic a reader has to undo rather than information.
+function lead(one) {
+  const ahead = minutesUntilStart(one);
+  if (ahead === null || ahead <= 0 || ahead >= 24 * 60) return "";
+  return ahead < 60 ? `opens in ${ahead} min` : `opens in ${Math.round(ahead / 60)} h`;
 }
 
 // How near the room a check-in has to come from, said the way the opener chose it.
@@ -48,6 +57,12 @@ function reach(one) {
   opened the register themselves — in which case it says so, with the window they set, the radius,
   and the PIN still to be read out — whether somebody else in the fellowship is taking attendance
   right now, and how to call a session off or widen its radius while it holds.
+
+  A register opened for further out than two hours is held back to one line of text naming it. The
+  dashboard is the room: what is being counted now, and what is about to be. A plan made last week for
+  next Sunday is neither, and it carried a PIN and a QR up there with the live ones, which is how a
+  card for 6 Dec ended up read out on the 27th. Nothing is lost by folding it — the row is still
+  fetched, still named, and one press away from being cancelled.
 
   It is a poll and not a push because that is what this app has: no message service is wired up,
   so the notice everyone in a community gets is this box appearing on their dashboard the next time
@@ -84,10 +99,15 @@ const css = `
 .ac button:disabled{opacity:.5;cursor:default}
 .ac .note{font-size:13px;margin:12px 0 0;padding:8px 12px;border-left:3px solid #111;background:#f0f0f0}
 .ac .note.bad{border-left-color:#a11111;background:#fbeaea;color:#7a1010}
+/* The line that accounts for the cards being held back. It is deliberately not a card: it says
+   nothing you can act on, only what is out of sight and how to put it back. */
+.ac .later{display:flex;align-items:center;flex-wrap:wrap;gap:10px;font-size:13px;color:#666;margin:2px 0 0}
+.ac .later button{background:none;color:#111;border:0;border-bottom:1px solid #bdbdbd;border-radius:0;padding:0;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.ac .later button:hover{background:none;color:#111;border-bottom-color:#111}
 `;
 
 function ManageCard({ one, admin, communityId, onChanged, onCancelled }) {
-  const status = statusOf(one);
+  const status = sessionStatus(one);
   const canManage = (one.mine || admin) && status !== "cancelled" && status !== "ended";
   const showControls = canManage && (one.mine || admin);
   const [radius, setRadius] = useState(one.radius === null || one.radius === undefined ? "" : String(one.radius));
@@ -153,7 +173,9 @@ function ManageCard({ one, admin, communityId, onChanged, onCancelled }) {
             ? `Attendance is being taken — ${clock(one.started_at)} to ${clock(one.ended_at)}, ${reach(one)}.`
             : status === "ended"
               ? `Attendance closed at ${clock(one.ended_at)}.`
-              : `Scheduled for ${day(one.started_at)}, ${clock(one.started_at)} to ${clock(one.ended_at)}.`}
+              : `Scheduled for ${day(one.started_at)}, ${clock(one.started_at)} to ${clock(one.ended_at)}${
+                  lead(one) ? ` — ${lead(one)}` : ""
+                }.`}
         </p>
       </div>
     );
@@ -170,13 +192,22 @@ function ManageCard({ one, admin, communityId, onChanged, onCancelled }) {
             leaders, and the sign-in one of them logged in with tells nobody anything they need —
             the same rule the roster and the function register are held to. */}
         {one.mine ? "You opened" : "A leader opened"} this register {day(one.started_at)}, from{" "}
-        <strong>{clock(one.started_at)}</strong> to <strong>{clock(one.ended_at)}</strong> — taking
-        check-ins {reach(one)}.
+        <strong>{clock(one.started_at)}</strong> to <strong>{clock(one.ended_at)}</strong> —{" "}
+        {status === "upcoming"
+          ? lead(one)
+            ? `${lead(one)}, then takes check-ins ${reach(one)}`
+            : `takes check-ins ${reach(one)}`
+          : status === "ended"
+            ? `took check-ins ${reach(one)}`
+            : `taking check-ins ${reach(one)}`}
+        .
       </p>
 
       {one.pin && (
         <p className="pin">
-          <span className="lbl">PIN to read out</span>
+          <span className="lbl">
+            {status === "upcoming" ? "PIN for when it opens" : "PIN to read out"}
+          </span>
           {one.pin}
         </p>
       )}
@@ -223,6 +254,13 @@ function ManageCard({ one, admin, communityId, onChanged, onCancelled }) {
 
 export default function AttendanceControl({ community_id, admin = false }) {
   const [rows, setRows] = useState([]);
+  /*
+    Whether the plans more than two hours out are on screen as well. They are held back by default,
+    not thrown away: `manage` answers with them either way, and the person who opened a register for
+    next Sunday still has to be able to call it off. So the row becomes one quiet line naming what is
+    not shown, and this switch puts the cards back.
+  */
+  const [showLater, setShowLater] = useState(false);
 
   useEffect(() => {
     if (!community_id) return undefined;
@@ -253,22 +291,46 @@ export default function AttendanceControl({ community_id, admin = false }) {
     setRows(Array.isArray(next) ? next : []);
   }
 
-  // The one the caller opened, and whatever else is live, float to the top of the list.
+  /*
+    The one the caller opened floats to the top, and after that the room's own order: what is being
+    taken now, then what opens next, then what has already run out. Started-first is what used to
+    sort a register opened for next Sunday above the one being counted in the hall, and a dashboard
+    is read from the top.
+  */
+  const RANK = { open: 0, upcoming: 1, ended: 2 };
   const ordered = [...rows].sort((a, b) => {
     const aMine = a.mine ? 0 : 1;
     const bMine = b.mine ? 0 : 1;
     if (aMine !== bMine) return aMine - bMine;
-    return new Date(b.started_at) - new Date(a.started_at);
+    const rankA = RANK[sessionStatus(a)] ?? 3;
+    const rankB = RANK[sessionStatus(b)] ?? 3;
+    if (rankA !== rankB) return rankA - rankB;
+    const startA = new Date(a.started_at).getTime();
+    const startB = new Date(b.started_at).getTime();
+    // What is still coming is soonest-first; what is running or done is newest-first.
+    return rankA === 1 ? startA - startB : startB - startA;
   });
+
+  // Two hours out is the line between the room's business and a plan. Everything behind it is
+  // collapsed into one line of text until somebody asks to see it.
+  const later = ordered.filter((one) => isHeldBack(one));
+  const shown = showLater ? ordered : ordered.filter((one) => !isHeldBack(one));
 
   // A card is a screenful on its own, so ten of them is where the list stops and the count line
   // takes over. The hook sits above the empty check: a hook cannot be asked to keep out of a
   // render that decided to leave early. These cards carry no anchor, so the screen stays where the
   // reader left it — the box is a stack of cards at the top of a dashboard, not a long register.
-  const live = usePager(ordered, PER_PAGE, community_id);
+  const live = usePager(shown, PER_PAGE, `${community_id}|${showLater ? "later" : "now"}`);
 
   // Nothing is open, scheduled or recently cancelled: there is nothing for this box to say.
   if (!rows.length) return null;
+
+  // What the collapsed line names, so a hidden card is never a card nobody can account for.
+  const plans = later
+    .slice(0, 3)
+    .map((one) => `${one.event_name || "A gathering"} on ${day(one.started_at)}`)
+    .join(", ");
+  const more = later.length > 3 ? ` and ${later.length - 3} more` : "";
 
   return (
     <section className="ac">
@@ -284,6 +346,29 @@ export default function AttendanceControl({ community_id, admin = false }) {
         />
       ))}
       <Pager state={live} noun={live.total === 1 ? "session" : "sessions"} />
+
+      {later.length > 0 && (
+        <p className="later">
+          {showLater ? (
+            <>
+              {later.length} {later.length === 1 ? "register" : "registers"} more than {LEAD_WORDS}{" "}
+              out are shown above.
+              <button type="button" onClick={() => setShowLater(false)}>
+                Hide them
+              </button>
+            </>
+          ) : (
+            <>
+              Not shown: {plans}
+              {more} — {later.length === 1 ? "it opens" : "they open"} more than {LEAD_WORDS} from
+              now.
+              <button type="button" onClick={() => setShowLater(true)}>
+                Show {later.length === 1 ? "it" : "them"}
+              </button>
+            </>
+          )}
+        </p>
+      )}
     </section>
   );
 }
